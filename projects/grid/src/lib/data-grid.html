@@ -77,7 +77,11 @@
 
   @if (sortedRows().length === 0) {
     <div class="gd-empty" role="row">
-      <div class="gd-cell" role="gridcell">No rows to display</div>
+      @if (noRowsTemplate()) {
+        <ng-container *ngTemplateOutlet="noRowsTemplate()!" />
+      } @else {
+        <div class="gd-cell" role="gridcell">No rows to display</div>
+      }
     </div>
   } @else if (pagination()) {
     <div class="gd-body gd-body--paged" [style.min-width]="contentMinWidth()">
@@ -103,6 +107,7 @@
               [class.gd-cell--editable]="isEditable(col, row)"
               [class.gd-cell--pinned]="col.pinned"
               [attr.tabindex]="isEditable(col, row) ? 0 : null"
+              [attr.title]="cellTooltip(col, row)"
               (click)="onCellClick(row, rowIndex, col, $event)"
               (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
               (keydown)="onCellKeydown(row, rowIndex, col, $event)"
@@ -142,6 +147,7 @@
             [class.gd-cell--editable]="isEditable(col, row)"
             [class.gd-cell--pinned]="col.pinned"
             [attr.tabindex]="isEditable(col, row) ? 0 : null"
+            [attr.title]="cellTooltip(col, row)"
             (click)="onCellClick(row, rowIndex, col, $event)"
             (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
             (keydown)="onCellKeydown(row, rowIndex, col, $event)"
@@ -151,6 +157,10 @@
         }
       </div>
     </cdk-virtual-scroll-viewport>
+  }
+
+  @if (loading()) {
+    <div class="gd-overlay gd-overlay--loading" role="status" aria-live="polite">Loading…</div>
   }
 
   @if (pagination() && sortedRows().length > 0) {
@@ -189,6 +199,10 @@
       [attr.aria-label]="'Select row ' + (rowIndex + 1)"
       [checked]="isSelected(row, rowIndex)"
       (change)="toggleRowSelection(row, rowIndex)"
+    />
+  } @else if (col.def.cellRenderer) {
+    <ng-container
+      *ngTemplateOutlet="col.def.cellRenderer; context: { $implicit: cellValue(row, col.def), value: cellValue(row, col.def), data: row }"
     />
   } @else if (isEditing(row, rowIndex, col)) {
     @switch (col.def.cellEditor ?? 'text') {

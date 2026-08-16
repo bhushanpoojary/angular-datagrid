@@ -5,6 +5,7 @@ import {
   Directive,
   ElementRef,
   OnInit,
+  TemplateRef,
   computed,
   inject,
   input,
@@ -77,6 +78,10 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly theme = input<'light' | 'dark' | 'high-contrast'>('light');
   /** Controls cell padding (and thus visual row compactness) via CSS custom properties. */
   readonly density = input<'compact' | 'normal' | 'comfortable'>('normal');
+  /** Shows a loading overlay over the body while data is being fetched/refreshed. */
+  readonly loading = input<boolean>(false);
+  /** Custom "no rows" overlay content; defaults to a plain "No rows to display" message. */
+  readonly noRowsTemplate = input<TemplateRef<void> | undefined>(undefined);
   /** Per-row height override; falls back to `rowHeight()` when omitted. Only honored in
    * non-virtualized (paginated) mode - the virtual-scroll viewport requires a single fixed
    * `itemSize` for its fixed-size strategy, so virtualized rows always use `rowHeight()`. */
@@ -396,6 +401,7 @@ export class DataGrid<TData = unknown> implements OnInit {
   }
 
   /** Merges a column's static `cellClass` with any `cellClassRules` that evaluate truthy for this row. */
+  /** Merges a column's static `cellClass` with any `cellClassRules` that evaluate truthy for this row. */
   protected cellClasses(col: ResolvedColumn<TData>, row: TData): string[] {
     const classes: string[] = ([] as string[]).concat(col.def.cellClass ?? []);
     const rules = col.def.cellClassRules;
@@ -405,6 +411,13 @@ export class DataGrid<TData = unknown> implements OnInit {
       if (predicate({ value, data: row })) classes.push(className);
     }
     return classes;
+  }
+
+  /** Native `title` attribute text for a cell's tooltip, or `null` when `tooltip` isn't set. */
+  protected cellTooltip(col: ResolvedColumn<TData>, row: TData): string | null {
+    const tooltip = col.def.tooltip;
+    if (!tooltip) return null;
+    return typeof tooltip === 'function' ? tooltip(row) : this.cellDisplay(row, col.def);
   }
 
   /** Evaluates `rowClassRules` (if provided) for a row, returning the matching class names. */

@@ -1,3 +1,4 @@
+import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
@@ -778,5 +779,100 @@ describe('DataGrid', () => {
       expect(root.getAttribute('data-gd-theme')).toBe('dark');
       expect(root.getAttribute('data-gd-density')).toBe('compact');
     });
+  });
+
+  describe('tooltips & overlays', () => {
+    it('sets a native title attribute from tooltip: true using the displayed value', async () => {
+      await setInputs(rowData, [
+        columnDefs[0],
+        { field: 'name', headerName: 'Name', tooltip: true },
+        columnDefs[2],
+      ]);
+      const cell = (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-cell')[1];
+      expect(cell.getAttribute('title')).toBe('Ada');
+    });
+
+    it('sets a native title attribute from a tooltip function', async () => {
+      await setInputs(rowData, [
+        columnDefs[0],
+        { field: 'name', headerName: 'Name', tooltip: (row: Row) => `Row for ${row.name}` },
+        columnDefs[2],
+      ]);
+      const cell = (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-cell')[1];
+      expect(cell.getAttribute('title')).toBe('Row for Ada');
+    });
+
+    it('has no title attribute when tooltip is not set', async () => {
+      await setInputs(rowData, columnDefs);
+      const cell = (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-cell')[1];
+      expect(cell.getAttribute('title')).toBeNull();
+    });
+
+    it('shows a loading overlay when loading is true', async () => {
+      fixture.componentRef.setInput('loading', true);
+      await setInputs(rowData, columnDefs);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-overlay--loading')).not.toBeNull();
+    });
+
+    it('hides the loading overlay by default', async () => {
+      await setInputs(rowData, columnDefs);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-overlay--loading')).toBeNull();
+    });
+
+    it('shows the default "No rows to display" message when there are no rows', async () => {
+      await setInputs([], columnDefs);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-empty')?.textContent?.trim()).toBe(
+        'No rows to display',
+      );
+    });
+  });
+});
+
+describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {
+  @Component({
+    imports: [DataGrid],
+    template: `
+      <gd-data-grid [rowData]="rowData" [columnDefs]="columnDefs" [noRowsTemplate]="empty" [pagination]="true" />
+      <ng-template #scoreTpl let-value>
+        <strong class="rendered-score">{{ value }}pts</strong>
+      </ng-template>
+      <ng-template #empty>
+        <p class="custom-empty">Nothing here yet</p>
+      </ng-template>
+    `,
+  })
+  class HostComponent implements OnInit {
+    @ViewChild('scoreTpl', { static: true }) scoreTpl!: TemplateRef<{ $implicit: number; value: number; data: Row }>;
+
+    rowData: Row[] = [{ id: 1, name: 'Ada', score: 91 }];
+    columnDefs: ColDef<Row>[] = [];
+
+    ngOnInit(): void {
+      this.columnDefs = [
+        { field: 'id', headerName: 'ID' },
+        { field: 'score', headerName: 'Score', cellRenderer: this.scoreTpl },
+      ];
+    }
+  }
+
+  it('renders a column cellRenderer template with the resolved value in context', async () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const rendered = (fixture.nativeElement as HTMLElement).querySelector('.rendered-score');
+    expect(rendered?.textContent?.trim()).toBe('91pts');
+  });
+
+  it('renders a custom noRowsTemplate when there are no rows', async () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.componentInstance.rowData = [];
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const empty = (fixture.nativeElement as HTMLElement).querySelector('.custom-empty');
+    expect(empty?.textContent?.trim()).toBe('Nothing here yet');
   });
 });

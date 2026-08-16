@@ -1,6 +1,7 @@
 .gd-root {
   display: flex;
   flex-direction: column;
+  position: relative;
   /* Single shared horizontal scrollbar for header + filter row + body - see contentMinWidth(). */
   overflow-x: auto;
   border: 1px solid var(--gd-border-color, #d0d0d0);
@@ -172,6 +173,18 @@
   padding: 16px;
   text-align: center;
   color: var(--gd-muted-color, #888);
+}
+
+.gd-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--gd-background, #fff) 80%, transparent);
+  color: var(--gd-text-color, #1a1a1a);
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .gd-body--paged {

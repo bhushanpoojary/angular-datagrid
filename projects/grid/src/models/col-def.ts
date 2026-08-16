@@ -1,4 +1,6 @@
 /** Column definition for the data grid. Extended feature-by-feature through later phases. */
+import type { TemplateRef } from '@angular/core';
+
 export interface ColDef<TData = unknown, TValue = unknown> {
   field?: keyof TData & string;
   headerName?: string;
@@ -34,4 +36,12 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   cellClassRules?: Record<string, (params: { value: TValue; data: TData }) => boolean>;
   valueGetter?: (data: TData) => TValue;
   valueFormatter?: (value: TValue) => string;
+  /** Custom cell content via template projection - the template's implicit context is the
+   * resolved value, with `value`/`data` also available as named context variables:
+   * `<ng-template #tpl let-value let-data="data">...</ng-template>`, then
+   * `{ field: 'x', cellRenderer: tpl }` where `tpl` is a `@ViewChild('tpl') tpl!: TemplateRef<...>`. */
+  cellRenderer?: TemplateRef<{ $implicit: TValue; value: TValue; data: TData }>;
+  /** Shows a native browser tooltip (the `title` attribute) on hover; `true` uses the cell's
+   * displayed value, or supply a function for custom tooltip text. */
+  tooltip?: boolean | ((row: TData) => string);
 }
