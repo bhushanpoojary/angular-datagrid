@@ -912,6 +912,82 @@ describe('DataGrid', () => {
       expect(document.activeElement).toBe(lastCell); // focus stays put, no error thrown
     });
   });
+
+  describe('Grid API (imperative methods)', () => {
+    it('selectAll() selects every displayed row and emits selectionChanged', async () => {
+      fixture.componentRef.setInput('rowSelection', 'multiple');
+      const events: Row[][] = [];
+      fixture.componentInstance.selectionChanged.subscribe((rows) => events.push(rows));
+      await setInputs(rowData, columnDefs);
+
+      component.selectAll();
+      expect(component.getSelectedRows()).toEqual(rowData);
+      expect(events.at(-1)).toEqual(rowData);
+    });
+
+    it('selectAll() is a no-op when rowSelection is none', async () => {
+      await setInputs(rowData, columnDefs);
+      component.selectAll();
+      expect(component.getSelectedRows()).toEqual([]);
+    });
+
+    it('deselectAll() clears the selection and emits an empty array', async () => {
+      fixture.componentRef.setInput('rowSelection', 'multiple');
+      const events: Row[][] = [];
+      fixture.componentInstance.selectionChanged.subscribe((rows) => events.push(rows));
+      await setInputs(rowData, columnDefs);
+
+      component.selectAll();
+      component.deselectAll();
+      expect(component.getSelectedRows()).toEqual([]);
+      expect(events.at(-1)).toEqual([]);
+    });
+
+    it('getDisplayedRowCount() reflects filtering, not the raw rowData length', async () => {
+      fixture.componentRef.setInput('quickFilterText', 'Ada');
+      await setInputs(rowData, columnDefs);
+      expect(component.getDisplayedRowCount()).toBe(1);
+    });
+
+    it('resetColumnState() clears a manually resized column width', async () => {
+      await setInputs(rowData, columnDefs);
+      const idHeader = headerFor('ID');
+      const handle = idHeader.querySelector<HTMLElement>('.gd-col-resizer')!;
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 100 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150 }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      fixture.detectChanges();
+      expect(headerFor('ID').style.flex).toBe('0 0 110px');
+
+      component.resetColumnState();
+      fixture.detectChanges();
+      expect(headerFor('ID').style.flex).toBe('0 0 60px');
+    });
+
+    it('exportDataAsCsv() triggers a CSV file download of the filtered/sorted rows', async () => {
+      await setInputs(rowData, columnDefs);
+      const clickSpy = vi.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        const el = originalCreateElement(tag);
+        if (tag === 'a') el.click = clickSpy;
+        return el;
+      });
+      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock');
+      const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+
+      component.exportDataAsCsv('rows.csv');
+
+      expect(createObjectURLSpy).toHaveBeenCalled();
+      expect(clickSpy).toHaveBeenCalled();
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock');
+
+      const csvBlob = createObjectURLSpy.mock.calls[0][0] as Blob;
+      const csvText = await csvBlob.text();
+      expect(csvText.split('\r\n')[0]).toBe('ID,Name,Score');
+      expect(csvText).toContain('Ada');
+    });
+  });
 });
 
 describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {

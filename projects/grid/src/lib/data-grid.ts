@@ -227,6 +227,62 @@ export class DataGrid<TData = unknown> implements OnInit {
     this.gridReady.emit({ rowCount: this.rowData().length, columnCount: this.columns().length });
   }
 
+  // ---------------------------------------------------------------------------------------
+  // Imperative Grid API - obtain via `@ViewChild(DataGrid) grid!: DataGrid<TData>` and call
+  // these directly (Angular convention: the component instance itself IS the API surface,
+  // rather than a separate injectable service).
+  // ---------------------------------------------------------------------------------------
+
+  /** Selects every currently-displayed (filtered/sorted/paged) row. No-op when `rowSelection`
+   * is `'none'`. Emits `(selectionChanged)`. */
+  selectAll(): void {
+    if (this.rowSelection() === 'none') return;
+    const next = new Map<string | number, TData>();
+    this.visibleRows().forEach((row, index) => next.set(this.rowId(row, index), row));
+    this.selection.set(next);
+    this.selectionChanged.emit([...next.values()]);
+  }
+
+  /** Clears the current selection. Emits `(selectionChanged)` with an empty array. */
+  deselectAll(): void {
+    this.selection.set(new Map());
+    this.selectionChanged.emit([]);
+  }
+
+  /** Returns the currently-selected row objects, in selection order. */
+  getSelectedRows(): TData[] {
+    return [...this.selection().values()];
+  }
+
+  /** Total row count after filtering/sorting (before pagination slices it into pages). */
+  getDisplayedRowCount(): number {
+    return this.sortedRows().length;
+  }
+
+  /** Clears any user drag-resized column widths and drag-reordered column order, reverting to
+   * the widths/order declared in `columnDefs`. */
+  resetColumnState(): void {
+    this.columnWidthOverrides.set({});
+    this.columnOrder.set(null);
+  }
+
+  /** Exports the currently filtered/sorted rows (all of them, ignoring pagination) as a CSV file
+   * download, using each column's `headerName`/`field` and formatted display value. */
+  exportDataAsCsv(fileName = 'export.csv'): void {
+    const cols = this.columns().filter((col) => !col.def.checkboxSelection);
+    const header = cols.map((col) => csvEscape(col.def.headerName ?? col.def.field ?? col.key));
+    const rows = this.sortedRows().map((row) => cols.map((col) => csvEscape(this.cellDisplay(row, col.def))));
+    const csv = [header, ...rows].map((line) => line.join(',')).join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   protected trackRow = (index: number, row: TData): string | number => this.getRowId()(row, index);
 
   private rowId(row: TData, index: number): string | number {
@@ -602,6 +658,13 @@ function cellAtRowOffset(cell: Element, rowEl: Element, deltaRows: number): Elem
     result = currentRow.children[cellIndex] ?? null;
   }
   return result;
+}
+
+/** Wraps a CSV field in quotes (doubling any embedded quotes) whenever it contains a comma,
+ * quote, or newline - otherwise returns it unmodified. */
+function csvEscape(value: string): string {
+  if (!/[",\r\n]/.test(value)) return value;
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function nextSortState(current: SortEntry[], key: string, multi: boolean): SortEntry[] {
