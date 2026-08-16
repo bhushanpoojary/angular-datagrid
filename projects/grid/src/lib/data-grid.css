@@ -18,6 +18,24 @@
   background: var(--gd-header-background, #f5f5f5);
 }
 
+.gd-row--filter {
+  background: var(--gd-background, #fff);
+}
+
+.gd-cell--filter {
+  padding: 4px 6px;
+}
+
+.gd-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid var(--gd-border-color, #d0d0d0);
+  border-radius: 4px;
+  font-family: inherit;
+}
+
 .gd-viewport {
   width: 100%;
 }

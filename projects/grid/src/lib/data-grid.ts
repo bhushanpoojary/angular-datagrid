@@ -33,10 +33,13 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly height = input<string>('480px');
   /** Stable row identity for virtual-scroll trackBy; defaults to positional index. */
   readonly getRowId = input<(row: TData, index: number) => string | number>((_row, index) => index);
+  /** Global search text matched against every visible column's displayed value. */
+  readonly quickFilterText = input<string>('');
 
   readonly gridReady = output<GridReadyEvent>();
 
   private readonly sortState = signal<SortEntry[]>([]);
+  private readonly columnFilters = signal<Record<string, string>>({});
 
   protected readonly columns = computed<ResolvedColumn<TData>[]>(() => {
     const fallback = this.defaultColDef();
@@ -52,12 +55,35 @@ export class DataGrid<TData = unknown> implements OnInit {
       });
   });
 
+  protected readonly hasColumnFilters = computed(() => this.columns().some((col) => !!col.def.filter));
+
+  protected readonly filteredRows = computed<readonly TData[]>(() => {
+    const cols = this.columns();
+    const filters = this.columnFilters();
+    const quick = this.quickFilterText().trim().toLowerCase();
+    const activeColumnFilters = cols.filter((col) => (filters[col.key] ?? '').trim().length > 0);
+    if (activeColumnFilters.length === 0 && !quick) return this.rowData();
+
+    return this.rowData().filter((row) => {
+      for (const col of activeColumnFilters) {
+        const filterText = filters[col.key].trim();
+        const type = col.def.filter === 'number' || col.def.filter === 'date' ? col.def.filter : 'text';
+        if (!matchesColumnFilter(this.cellValue(row, col.def), filterText, type)) return false;
+      }
+      if (quick && !cols.some((col) => this.cellDisplay(row, col.def).toLowerCase().includes(quick))) {
+        return false;
+      }
+      return true;
+    });
+  });
+
   protected readonly sortedRows = computed<readonly TData[]>(() => {
     const sorts = this.sortState();
-    if (sorts.length === 0) return this.rowData();
+    const rows = this.filteredRows();
+    if (sorts.length === 0) return rows;
 
     const columnsByKey = new Map(this.columns().map((col) => [col.key, col.def]));
-    return [...this.rowData()].sort((rowA, rowB) => {
+    return [...rows].sort((rowA, rowB) => {
       for (const sort of sorts) {
         const col = columnsByKey.get(sort.key);
         if (!col) continue;
@@ -91,6 +117,26 @@ export class DataGrid<TData = unknown> implements OnInit {
     const value = this.cellValue(row, col);
     if (col.valueFormatter) return col.valueFormatter(value);
     return value == null ? '' : String(value);
+  }
+
+  protected columnFilterValue(col: ResolvedColumn<TData>): string {
+    return this.columnFilters()[col.key] ?? '';
+  }
+
+  protected filterPlaceholder(col: ResolvedColumn<TData>): string {
+    switch (col.def.filter) {
+      case 'number':
+        return 'e.g. >10';
+      case 'date':
+        return 'YYYY-MM-DD';
+      default:
+        return 'Filter…';
+    }
+  }
+
+  protected onColumnFilterInput(col: ResolvedColumn<TData>, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.columnFilters.update((current) => ({ ...current, [col.key]: value }));
   }
 
   protected onHeaderClick(col: ResolvedColumn<TData>, event: MouseEvent): void {
@@ -140,6 +186,42 @@ function defaultCompare(valueA: unknown, valueB: unknown): number {
   if (typeof valueA === 'number' && typeof valueB === 'number') return valueA - valueB;
   if (valueA instanceof Date && valueB instanceof Date) return valueA.getTime() - valueB.getTime();
   return String(valueA).localeCompare(String(valueB));
+}
+
+const NUMBER_FILTER_PATTERN = /^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/;
+
+function matchesColumnFilter(value: unknown, filterText: string, type: 'text' | 'number' | 'date'): boolean {
+  if (type === 'number') {
+    const match = NUMBER_FILTER_PATTERN.exec(filterText);
+    if (!match) return String(value ?? '').toLowerCase().includes(filterText.toLowerCase());
+
+    const [, operator = '=', numberText] = match;
+    const target = Number(numberText);
+    const actual = typeof value === 'number' ? value : Number(value);
+    if (Number.isNaN(actual)) return false;
+
+    switch (operator) {
+      case '>':
+        return actual > target;
+      case '>=':
+        return actual >= target;
+      case '<':
+        return actual < target;
+      case '<=':
+        return actual <= target;
+      default:
+        return actual === target;
+    }
+  }
+
+  if (type === 'date') {
+    const actual = value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? '');
+    return actual.startsWith(filterText.trim());
+  }
+
+  return String(value ?? '')
+    .toLowerCase()
+    .includes(filterText.toLowerCase());
 }
 
 function columnStyle<TData>(col: ColDef<TData>): Record<string, string> {

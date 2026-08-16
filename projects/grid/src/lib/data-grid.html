@@ -1,7 +1,7 @@
 <div
   class="gd-root"
   role="grid"
-  [attr.aria-rowcount]="rowData().length + 1"
+  [attr.aria-rowcount]="sortedRows().length + 1"
   [attr.aria-colcount]="columns().length"
 >
   <div class="gd-row gd-row--header" role="row">
@@ -30,7 +30,26 @@
     }
   </div>
 
-  @if (rowData().length === 0) {
+  @if (hasColumnFilters()) {
+    <div class="gd-row gd-row--filter" role="row">
+      @for (col of columns(); track col.key) {
+        <div class="gd-cell gd-cell--filter" role="gridcell" [style]="col.style">
+          @if (col.def.filter) {
+            <input
+              type="text"
+              class="gd-filter-input"
+              [attr.aria-label]="'Filter ' + (col.def.headerName ?? col.def.field)"
+              [placeholder]="filterPlaceholder(col)"
+              [value]="columnFilterValue(col)"
+              (input)="onColumnFilterInput(col, $event)"
+            />
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (sortedRows().length === 0) {
     <div class="gd-empty" role="row">
       <div class="gd-cell" role="gridcell">No rows to display</div>
     </div>

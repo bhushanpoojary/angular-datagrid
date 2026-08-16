@@ -52,6 +52,21 @@ describe('DataGrid', () => {
     }
   }
 
+  function bodyText(): string[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-row .gd-cell:first-child'),
+    ).map((el) => (el.textContent ?? '').trim());
+  }
+
+  function headerFor(name: string): HTMLElement {
+    const headers = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[role="columnheader"]'),
+    );
+    const header = headers.find((el) => el.textContent?.includes(name));
+    if (!header) throw new Error(`header ${name} not found`);
+    return header;
+  }
+
   it('should create', () => {
     expect(component).toBeTruthy();
   });
@@ -111,21 +126,6 @@ describe('DataGrid', () => {
       { field: 'name', headerName: 'Name', sortable: true },
       { field: 'score', headerName: 'Score', sortable: true },
     ];
-
-    function bodyText(): string[] {
-      return Array.from(
-        (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-row .gd-cell:first-child'),
-      ).map((el) => (el.textContent ?? '').trim());
-    }
-
-    function headerFor(name: string): HTMLElement {
-      const headers = Array.from(
-        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[role="columnheader"]'),
-      );
-      const header = headers.find((el) => el.textContent?.includes(name));
-      if (!header) throw new Error(`header ${name} not found`);
-      return header;
-    }
 
     it('applies declarative default sort (lowest sortIndex wins)', async () => {
       await setInputs(threeRows, [
@@ -191,6 +191,72 @@ describe('DataGrid', () => {
       headerFor('Score').click();
       fixture.detectChanges();
       expect(bodyText()).toEqual(['2', '3', '1']); // reversed comparator flips the usual asc order
+    });
+  });
+
+  describe('filtering', () => {
+    const threeRows: Row[] = [
+      { id: 1, name: 'Charlie', score: 70 },
+      { id: 2, name: 'Alpha', score: 90 },
+      { id: 3, name: 'Bravo', score: 80 },
+    ];
+
+    function setFilterInput(headerName: string, value: string): void {
+      const filterInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+        `[aria-label="Filter ${headerName}"]`,
+      );
+      if (!filterInput) throw new Error(`filter input for ${headerName} not found`);
+      filterInput.value = value;
+      filterInput.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    }
+
+    it('does not render a filter row when no column declares `filter`', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name' },
+      ]);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-row--filter')).toBeNull();
+    });
+
+    it('filters rows by a text column (case-insensitive substring)', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', filter: 'text' },
+        { field: 'score', headerName: 'Score' },
+      ]);
+      setFilterInput('Name', 'ha');
+      expect(bodyText()).toEqual(['1', '2']); // Charlie, Alpha (both contain "ha")
+    });
+
+    it('filters a number column using comparison operators', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name' },
+        { field: 'score', headerName: 'Score', filter: 'number' },
+      ]);
+      setFilterInput('Score', '>75');
+      expect(bodyText()).toEqual(['2', '3']); // 90 and 80
+    });
+
+    it('combines a quick filter across all columns with column filters', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', filter: 'text' },
+        { field: 'score', headerName: 'Score' },
+      ]);
+      fixture.componentRef.setInput('quickFilterText', '80');
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['3']); // only Bravo has score 80
+    });
+
+    it('shows the empty state when filters match nothing', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', filter: 'text' },
+      ]);
+      setFilterInput('Name', 'zzz');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('No rows to display');
     });
   });
 });
