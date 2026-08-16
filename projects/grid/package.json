@@ -3,6 +3,9 @@
   "version": "0.0.4",
   "description": "Open-source Angular data grid (virtualization, sorting, filtering, editing, theming).",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bhushanpoojary/angular-datagrid.git"
