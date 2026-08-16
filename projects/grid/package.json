@@ -11,6 +11,7 @@
     "url": "git+https://github.com/bhushanpoojary/angular-datagrid.git"
   },
   "peerDependencies": {
+    "@angular/cdk": "^22.1.0",
     "@angular/common": "^22.1.0",
     "@angular/core": "^22.1.0"
   },

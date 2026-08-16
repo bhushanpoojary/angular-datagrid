@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 
 import { DataGrid } from './data-grid';
 import type { ColDef } from '../models/col-def';
@@ -31,10 +33,23 @@ describe('DataGrid', () => {
     component = fixture.componentInstance;
   });
 
-  function setInputs(data: readonly Row[], defs: readonly ColDef<Row>[]): void {
+  // jsdom never lays out elements (clientHeight is always 0), so the CDK virtual
+  // scroll viewport thinks it has no space and renders nothing - fake a real size.
+  async function setInputs(data: readonly Row[], defs: readonly ColDef<Row>[]): Promise<void> {
     fixture.componentRef.setInput('rowData', data);
     fixture.componentRef.setInput('columnDefs', defs);
     fixture.detectChanges();
+
+    const viewportDebug = fixture.debugElement.query(By.directive(CdkVirtualScrollViewport));
+    if (viewportDebug) {
+      Object.defineProperty(viewportDebug.nativeElement, 'clientHeight', { value: 400, configurable: true });
+      viewportDebug.injector.get(CdkVirtualScrollViewport).checkViewportSize();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
   }
 
   it('should create', () => {
@@ -46,42 +61,42 @@ describe('DataGrid', () => {
     expect(component.columnDefs()).toEqual([]);
   });
 
-  it('renders a header cell per visible column', () => {
-    setInputs(rowData, columnDefs);
+  it('renders a header cell per visible column', async () => {
+    await setInputs(rowData, columnDefs);
     const headers = (fixture.nativeElement as HTMLElement).querySelectorAll('[role="columnheader"]');
     expect(headers.length).toBe(3);
     expect(headers[1].textContent?.trim()).toBe('Name');
   });
 
-  it('renders one row per data item with formatted values', () => {
-    setInputs(rowData, columnDefs);
+  it('renders one row per data item with formatted values', async () => {
+    await setInputs(rowData, columnDefs);
     const rows = (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-row:not(.gd-row--header)');
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain('Ada');
     expect(rows[0].textContent).toContain('91%');
   });
 
-  it('hides columns marked hide:true', () => {
-    setInputs(rowData, [...columnDefs, { field: 'id', headerName: 'Hidden', hide: true }]);
+  it('hides columns marked hide:true', async () => {
+    await setInputs(rowData, [...columnDefs, { field: 'id', headerName: 'Hidden', hide: true }]);
     const headers = (fixture.nativeElement as HTMLElement).querySelectorAll('[role="columnheader"]');
     expect(headers.length).toBe(3);
   });
 
-  it('applies defaultColDef to columns without their own value', () => {
+  it('applies defaultColDef to columns without their own value', async () => {
     fixture.componentRef.setInput('defaultColDef', { flex: 2 } satisfies ColDef<Row>);
-    setInputs(rowData, [{ field: 'name' }]);
+    await setInputs(rowData, [{ field: 'name' }]);
     expect(component['columns']()[0].style['flex']).toBe('2 1 0');
   });
 
-  it('shows an empty state message when there are no rows', () => {
-    setInputs([], columnDefs);
+  it('shows an empty state message when there are no rows', async () => {
+    await setInputs([], columnDefs);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('No rows to display');
   });
 
-  it('emits gridReady once with row/column counts', () => {
+  it('emits gridReady once with row/column counts', async () => {
     const events: GridReadyEvent[] = [];
     component.gridReady.subscribe((event) => events.push(event));
-    setInputs(rowData, columnDefs);
+    await setInputs(rowData, columnDefs);
     expect(events).toEqual([{ rowCount: 2, columnCount: 3 }]);
   });
 });

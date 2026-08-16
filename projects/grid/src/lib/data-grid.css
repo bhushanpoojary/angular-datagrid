@@ -18,6 +18,15 @@
   background: var(--gd-header-background, #f5f5f5);
 }
 
+.gd-viewport {
+  width: 100%;
+}
+
+.gd-viewport .gd-row {
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
 .gd-cell {
   padding: 6px 8px;
   overflow: hidden;

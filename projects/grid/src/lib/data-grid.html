@@ -17,14 +17,20 @@
       <div class="gd-cell" role="gridcell">No rows to display</div>
     </div>
   } @else {
-    @for (row of rowData(); track $index; let rowIndex = $index) {
-      <div class="gd-row" role="row" [attr.aria-rowindex]="rowIndex + 2">
+    <cdk-virtual-scroll-viewport [itemSize]="rowHeight()" [style.height]="height()" class="gd-viewport">
+      <div
+        class="gd-row"
+        role="row"
+        [style.height.px]="rowHeight()"
+        [attr.aria-rowindex]="rowIndex + 2"
+        *cdkVirtualFor="let row of rowData(); trackBy: trackRow; let rowIndex = index"
+      >
         @for (col of columns(); track col.key) {
           <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
             {{ cellDisplay(row, col.def) }}
           </div>
         }
       </div>
-    }
+    </cdk-virtual-scroll-viewport>
   }
 </div>
