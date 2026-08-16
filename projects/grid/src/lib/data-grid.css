@@ -83,6 +83,14 @@
   color: var(--gd-accent-color, #2563eb);
 }
 
+.gd-row--selected {
+  background: var(--gd-selected-background, #e0e7ff);
+}
+
+.gd-select-checkbox {
+  cursor: pointer;
+}
+
 .gd-empty {
   padding: 16px;
   text-align: center;

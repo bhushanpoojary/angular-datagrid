@@ -31,7 +31,9 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly rowHeight = input<number>(36);
   /** CSS height of the scrollable body viewport, e.g. '480px' or '60vh'. */
   readonly height = input<string>('480px');
-  /** Stable row identity for virtual-scroll trackBy; defaults to positional index. */
+  /** Stable row identity for virtual-scroll trackBy AND row selection; defaults to positional
+   * index - supply a real id-based function (e.g. `(row) => row.id`) for selection to survive
+   * sorting/filtering correctly. */
   readonly getRowId = input<(row: TData, index: number) => string | number>((_row, index) => index);
   /** Global search text matched against every visible column's displayed value. */
   readonly quickFilterText = input<string>('');
@@ -39,12 +41,17 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly pagination = input<boolean>(false);
   /** Rows per page when `pagination` is enabled. */
   readonly pageSize = input<number>(50);
+  /** Row selection mode; `'none'` disables selection entirely (default). */
+  readonly rowSelection = input<'none' | 'single' | 'multiple'>('none');
 
   readonly gridReady = output<GridReadyEvent>();
+  /** Fires with the full list of currently-selected row objects whenever selection changes. */
+  readonly selectionChanged = output<TData[]>();
 
   private readonly sortState = signal<SortEntry[]>([]);
   private readonly columnFilters = signal<Record<string, string>>({});
   private readonly currentPage = signal(0);
+  private readonly selection = signal<ReadonlyMap<string | number, TData>>(new Map());
 
   protected readonly columns = computed<ResolvedColumn<TData>[]>(() => {
     const fallback = this.defaultColDef();
@@ -122,6 +129,18 @@ export class DataGrid<TData = unknown> implements OnInit {
     return this.sortedRows().slice(start, start + this.pageSize());
   });
 
+  /** The currently rendered rows (post filter/sort/page) - what select-all should act on. */
+  private readonly visibleRows = computed<readonly TData[]>(() =>
+    this.pagination() ? this.pagedRows() : this.sortedRows(),
+  );
+
+  protected readonly allVisibleSelected = computed(() => {
+    const rows = this.visibleRows();
+    if (rows.length === 0) return false;
+    const selected = this.selection();
+    return rows.every((row, index) => selected.has(this.rowId(row, index)));
+  });
+
   ngOnInit(): void {
     const initialSort = this.columns()
       .filter((col) => col.def.sort)
@@ -133,6 +152,61 @@ export class DataGrid<TData = unknown> implements OnInit {
   }
 
   protected trackRow = (index: number, row: TData): string | number => this.getRowId()(row, index);
+
+  private rowId(row: TData, index: number): string | number {
+    return this.getRowId()(row, index);
+  }
+
+  protected isSelected(row: TData, index: number): boolean {
+    return this.selection().has(this.rowId(row, index));
+  }
+
+  protected toggleRowSelection(row: TData, index: number): void {
+    const mode = this.rowSelection();
+    if (mode === 'none') return;
+    const id = this.rowId(row, index);
+
+    this.selection.update((current) => {
+      if (mode === 'single') {
+        return current.has(id) && current.size === 1 ? new Map() : new Map([[id, row]]);
+      }
+      const next = new Map(current);
+      if (next.has(id)) next.delete(id);
+      else next.set(id, row);
+      return next;
+    });
+    this.selectionChanged.emit([...this.selection().values()]);
+  }
+
+  protected onRowClick(row: TData, index: number, event: MouseEvent): void {
+    // The checkbox's own (change) handler already toggles selection - avoid double-toggling.
+    if ((event.target as HTMLElement).closest('input[type="checkbox"]')) return;
+    this.toggleRowSelection(row, index);
+  }
+
+  protected onRowKeydown(row: TData, index: number, event: KeyboardEvent): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if ((event.target as HTMLElement).closest('input[type="checkbox"]')) return;
+    event.preventDefault();
+    this.toggleRowSelection(row, index);
+  }
+
+  protected toggleSelectAll(): void {
+    if (this.rowSelection() !== 'multiple') return;
+    const rows = this.visibleRows();
+    const selectAll = !this.allVisibleSelected();
+
+    this.selection.update((current) => {
+      const next = new Map(current);
+      rows.forEach((row, index) => {
+        const id = this.rowId(row, index);
+        if (selectAll) next.set(id, row);
+        else next.delete(id);
+      });
+      return next;
+    });
+    this.selectionChanged.emit([...this.selection().values()]);
+  }
 
   protected goToPage(page: number): void {
     this.currentPage.set(Math.min(Math.max(page, 0), this.pageCount() - 1));

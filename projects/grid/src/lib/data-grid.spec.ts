@@ -332,4 +332,100 @@ describe('DataGrid', () => {
       expect((fixture.nativeElement as HTMLElement).querySelector('.gd-pager')).toBeNull();
     });
   });
+
+  describe('selection', () => {
+    const threeRows: Row[] = [
+      { id: 1, name: 'Charlie', score: 70 },
+      { id: 2, name: 'Alpha', score: 90 },
+      { id: 3, name: 'Bravo', score: 80 },
+    ];
+
+    function bodyRows(): HTMLElement[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.gd-viewport .gd-row, .gd-body--paged .gd-row',
+        ),
+      );
+    }
+
+    function checkboxIn(row: HTMLElement): HTMLInputElement {
+      const checkbox = row.querySelector<HTMLInputElement>('.gd-select-checkbox');
+      if (!checkbox) throw new Error('checkbox not found in row');
+      return checkbox;
+    }
+
+    it('does nothing when rowSelection is "none" (default)', async () => {
+      await setInputs(threeRows, columnDefs);
+      bodyRows()[0].click();
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-row--selected')).toBeNull();
+    });
+
+    it('single mode: selects one row and clicking it again deselects it', async () => {
+      fixture.componentRef.setInput('rowSelection', 'single');
+      const events: Row[][] = [];
+      component.selectionChanged.subscribe((rows) => events.push(rows));
+      await setInputs(threeRows, columnDefs);
+
+      const rows = bodyRows();
+      rows[0].click();
+      fixture.detectChanges();
+      expect(rows[0].classList).toContain('gd-row--selected');
+      expect(events.at(-1)).toEqual([threeRows[0]]);
+
+      rows[1].click();
+      fixture.detectChanges();
+      expect(bodyRows()[0].classList).not.toContain('gd-row--selected');
+      expect(bodyRows()[1].classList).toContain('gd-row--selected');
+
+      bodyRows()[1].click();
+      fixture.detectChanges();
+      expect(bodyRows()[1].classList).not.toContain('gd-row--selected');
+      expect(events.at(-1)).toEqual([]);
+    });
+
+    it('multiple mode: checkbox column toggles individual rows and header toggles select-all', async () => {
+      fixture.componentRef.setInput('rowSelection', 'multiple');
+      const events: Row[][] = [];
+      component.selectionChanged.subscribe((rows) => events.push(rows));
+      await setInputs(threeRows, [{ field: 'id', headerName: '', checkboxSelection: true }, ...columnDefs]);
+
+      const rows = bodyRows();
+      checkboxIn(rows[0]).click();
+      checkboxIn(rows[2]).click();
+      fixture.detectChanges();
+      expect(events.at(-1)?.map((r) => r.id).sort()).toEqual([1, 3]);
+
+      const selectAll = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+        '[aria-label="Select all rows"]',
+      );
+      selectAll?.click();
+      fixture.detectChanges();
+      expect(events.at(-1)?.length).toBe(3);
+
+      selectAll?.click();
+      fixture.detectChanges();
+      expect(events.at(-1)).toEqual([]);
+    });
+
+    it('keeps selection tied to a real row id (getRowId) across sorting', async () => {
+      fixture.componentRef.setInput('rowSelection', 'single');
+      fixture.componentRef.setInput('getRowId', (row: Row) => row.id);
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', sortable: true },
+        { field: 'score', headerName: 'Score' },
+      ]);
+
+      bodyRows()[1].click(); // selects Alpha (id 2), currently at position 1
+      fixture.detectChanges();
+      expect(bodyRows()[1].classList).toContain('gd-row--selected');
+
+      headerFor('Name').click(); // sort by name asc -> reorders rows
+      fixture.detectChanges();
+      const rows = bodyRows();
+      const selectedIndex = rows.findIndex((row) => row.classList.contains('gd-row--selected'));
+      expect(bodyText()[selectedIndex]).toBe('2'); // Alpha's id, still selected after reordering
+    });
+  });
 });

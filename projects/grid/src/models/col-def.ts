@@ -15,6 +15,9 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   comparator?: (valueA: TValue, valueB: TValue, rowA: TData, rowB: TData) => number;
   /** Enables a per-column filter row input. `true` behaves like `'text'` (case-insensitive substring). */
   filter?: boolean | 'text' | 'number' | 'date';
+  /** Renders a selection checkbox in this column's cells, and a select-all checkbox in its header
+   * when `rowSelection` is `'multiple'`. Typically set on the first column. */
+  checkboxSelection?: boolean;
   hide?: boolean;
   pinned?: 'left' | 'right' | null;
   cellClass?: string | string[];

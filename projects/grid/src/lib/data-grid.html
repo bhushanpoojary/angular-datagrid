@@ -18,6 +18,16 @@
         (keydown)="onHeaderKeydown(col, $event)"
       >
         <span class="gd-cell__label">{{ col.def.headerName ?? col.def.field }}</span>
+        @if (col.def.checkboxSelection && rowSelection() === 'multiple') {
+          <input
+            type="checkbox"
+            class="gd-select-checkbox"
+            aria-label="Select all rows"
+            [checked]="allVisibleSelected()"
+            (click)="$event.stopPropagation()"
+            (change)="toggleSelectAll()"
+          />
+        }
         @if (sortInfo(col).direction) {
           <span class="gd-sort-indicator">
             {{ sortInfo(col).direction === 'asc' ? '▲' : '▼' }}
@@ -56,10 +66,30 @@
   } @else if (pagination()) {
     <div class="gd-body gd-body--paged" [style.min-width]="contentMinWidth()">
       @for (row of pagedRows(); track trackRow($index, row); let rowIndex = $index) {
-        <div class="gd-row" role="row" [style.height.px]="rowHeight()" [attr.aria-rowindex]="rowIndex + 2">
+        <div
+          class="gd-row"
+          role="row"
+          [class.gd-row--selected]="isSelected(row, rowIndex)"
+          [style.height.px]="rowHeight()"
+          [attr.aria-rowindex]="rowIndex + 2"
+          [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(row, rowIndex) : null"
+          [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
+          (click)="onRowClick(row, rowIndex, $event)"
+          (keydown)="onRowKeydown(row, rowIndex, $event)"
+        >
           @for (col of columns(); track col.key) {
             <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
-              {{ cellDisplay(row, col.def) }}
+              @if (col.def.checkboxSelection) {
+                <input
+                  type="checkbox"
+                  class="gd-select-checkbox"
+                  [attr.aria-label]="'Select row ' + (rowIndex + 1)"
+                  [checked]="isSelected(row, rowIndex)"
+                  (change)="toggleRowSelection(row, rowIndex)"
+                />
+              } @else {
+                {{ cellDisplay(row, col.def) }}
+              }
             </div>
           }
         </div>
@@ -75,13 +105,28 @@
       <div
         class="gd-row"
         role="row"
+        [class.gd-row--selected]="isSelected(row, rowIndex)"
         [style.height.px]="rowHeight()"
         [attr.aria-rowindex]="rowIndex + 2"
+        [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(row, rowIndex) : null"
+        [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
+        (click)="onRowClick(row, rowIndex, $event)"
+        (keydown)="onRowKeydown(row, rowIndex, $event)"
         *cdkVirtualFor="let row of sortedRows(); trackBy: trackRow; let rowIndex = index"
       >
         @for (col of columns(); track col.key) {
           <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
-            {{ cellDisplay(row, col.def) }}
+            @if (col.def.checkboxSelection) {
+              <input
+                type="checkbox"
+                class="gd-select-checkbox"
+                [attr.aria-label]="'Select row ' + (rowIndex + 1)"
+                [checked]="isSelected(row, rowIndex)"
+                (change)="toggleRowSelection(row, rowIndex)"
+              />
+            } @else {
+              {{ cellDisplay(row, col.def) }}
+            }
           </div>
         }
       </div>
