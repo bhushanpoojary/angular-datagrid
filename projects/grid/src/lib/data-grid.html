@@ -1,4 +1,30 @@
-<div class="gd-root" role="grid">
-  <!-- Phase 0 scaffold placeholder; rendering/virtualization lands in Phase 1 -->
-  <p>angular-datagrid: {{ rowData().length }} row(s), {{ columnDefs().length }} column(s)</p>
+<div
+  class="gd-root"
+  role="grid"
+  [attr.aria-rowcount]="rowData().length + 1"
+  [attr.aria-colcount]="columns().length"
+>
+  <div class="gd-row gd-row--header" role="row">
+    @for (col of columns(); track col.key) {
+      <div class="gd-cell gd-cell--header" role="columnheader" [ngClass]="col.def.cellClass" [style]="col.style">
+        {{ col.def.headerName ?? col.def.field }}
+      </div>
+    }
+  </div>
+
+  @if (rowData().length === 0) {
+    <div class="gd-empty" role="row">
+      <div class="gd-cell" role="gridcell">No rows to display</div>
+    </div>
+  } @else {
+    @for (row of rowData(); track $index; let rowIndex = $index) {
+      <div class="gd-row" role="row" [attr.aria-rowindex]="rowIndex + 2">
+        @for (col of columns(); track col.key) {
+          <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
+            {{ cellDisplay(row, col.def) }}
+          </div>
+        }
+      </div>
+    }
+  }
 </div>

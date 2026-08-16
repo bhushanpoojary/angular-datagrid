@@ -1,4 +1,37 @@
 .gd-root {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--gd-border-color, #d0d0d0);
   font-family: var(--gd-font-family, sans-serif);
+  font-size: var(--gd-font-size, 14px);
+  color: var(--gd-text-color, #1a1a1a);
+  background: var(--gd-background, #fff);
+}
+
+.gd-row {
+  display: flex;
+  border-bottom: 1px solid var(--gd-border-color, #e0e0e0);
+}
+
+.gd-row--header {
+  font-weight: 600;
+  background: var(--gd-header-background, #f5f5f5);
+}
+
+.gd-cell {
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid var(--gd-border-color, #eee);
+}
+
+.gd-cell:last-child {
+  border-right: none;
+}
+
+.gd-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--gd-muted-color, #888);
 }
