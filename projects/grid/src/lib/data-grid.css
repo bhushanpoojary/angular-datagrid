@@ -66,6 +66,33 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  position: relative;
+  background: var(--gd-header-background, #f5f5f5);
+}
+
+.gd-col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.gd-col-resizer:hover {
+  background: var(--gd-accent-color, #2563eb);
+  opacity: 0.4;
+}
+
+/* Pinned (sticky) columns need an explicit background so scrolled-past content doesn't show
+   through; row-selected/hover tints are re-applied on top via the more specific rules below. */
+.gd-cell--pinned {
+  background: var(--gd-background, #fff);
+}
+
+.gd-row--selected .gd-cell--pinned {
+  background: var(--gd-selected-background, #e0e7ff);
 }
 
 .gd-cell--sortable {

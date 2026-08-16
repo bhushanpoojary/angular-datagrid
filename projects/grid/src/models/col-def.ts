@@ -27,6 +27,8 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   valueSetter?: (row: TData, value: TValue) => void;
   hide?: boolean;
   pinned?: 'left' | 'right' | null;
+  /** Allows the user to drag-resize this column's width from its header. Defaults to `true`. */
+  resizable?: boolean;
   cellClass?: string | string[];
   valueGetter?: (data: TData) => TValue;
   valueFormatter?: (value: TValue) => string;

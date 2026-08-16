@@ -619,4 +619,101 @@ describe('DataGrid', () => {
       expect(twoRows[0].name).toBe('[edited] Zed');
     });
   });
+
+  describe('column ops', () => {
+    function headerCells(): HTMLElement[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[role="columnheader"]'),
+      );
+    }
+
+    it('drag-resizes a column via its resize handle, widening the flex-basis', async () => {
+      await setInputs(rowData, columnDefs);
+      const idHeader = headerFor('ID');
+      const handle = idHeader.querySelector<HTMLElement>('.gd-col-resizer')!;
+      expect(handle).not.toBeNull();
+
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 100 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150 }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(idHeader.style.flex).toBe('0 0 110px'); // 60px initial width + 50px drag delta
+    });
+
+    it('stops resizing once mouseup fires (further mousemove has no effect)', async () => {
+      await setInputs(rowData, columnDefs);
+      const idHeader = headerFor('ID');
+      const handle = idHeader.querySelector<HTMLElement>('.gd-col-resizer')!;
+
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 100 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 120 }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 500 }));
+      fixture.detectChanges();
+
+      expect(idHeader.style.flex).toBe('0 0 80px'); // only the pre-mouseup delta applied
+    });
+
+    it('does not render a resize handle when resizable is explicitly false', async () => {
+      await setInputs(rowData, [{ field: 'id', headerName: 'ID', width: 60, resizable: false }, ...columnDefs.slice(1)]);
+      expect(headerFor('ID').querySelector('.gd-col-resizer')).toBeNull();
+    });
+
+    it('reorders columns via header drag-and-drop', async () => {
+      await setInputs(rowData, columnDefs);
+      expect(headerCells().map((el) => el.textContent?.trim().charAt(0))).toEqual(['I', 'N', 'S']); // ID, Name, Score
+
+      // jsdom doesn't implement DataTransfer in this test environment - a minimal stand-in
+      // (setData/getData backed by a Map) is enough to exercise the reorder logic.
+      const store = new Map<string, string>();
+      const dataTransfer = {
+        setData: (type: string, value: string) => store.set(type, value),
+        getData: (type: string) => store.get(type) ?? '',
+        effectAllowed: '',
+      } as unknown as DataTransfer;
+      const idHeader = headerFor('ID');
+      const scoreHeader = headerFor('Score');
+
+      const dragStart = new Event('dragstart', { bubbles: true }) as DragEvent;
+      Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer });
+      const dragOver = new Event('dragover', { bubbles: true }) as DragEvent;
+      Object.defineProperty(dragOver, 'dataTransfer', { value: dataTransfer });
+      const drop = new Event('drop', { bubbles: true }) as DragEvent;
+      Object.defineProperty(drop, 'dataTransfer', { value: dataTransfer });
+
+      idHeader.dispatchEvent(dragStart);
+      scoreHeader.dispatchEvent(dragOver);
+      scoreHeader.dispatchEvent(drop);
+      fixture.detectChanges();
+
+      expect(headerFor('Name')).toBeTruthy();
+      const order = headerCells().map((el) => el.textContent?.trim().split(' ')[0]);
+      expect(order).toEqual(['Name', 'Score', 'ID']); // ID moved to Score's former position
+    });
+
+    it('pins a column left with sticky positioning and a zero left offset', async () => {
+      await setInputs(rowData, [{ ...columnDefs[0], pinned: 'left' }, ...columnDefs.slice(1)]);
+      const idHeader = headerFor('ID');
+      expect(idHeader.style.position).toBe('sticky');
+      expect(idHeader.style.left).toBe('0px');
+    });
+
+    it('pins a column right with sticky positioning and a zero right offset', async () => {
+      await setInputs(rowData, [...columnDefs.slice(0, 2), { ...columnDefs[2], pinned: 'right' }]);
+      const scoreHeader = headerFor('Score');
+      expect(scoreHeader.style.position).toBe('sticky');
+      expect(scoreHeader.style.right).toBe('0px');
+    });
+
+    it('clusters pinned-left and pinned-right columns even if declared out of order', async () => {
+      await setInputs(rowData, [
+        { field: 'id', headerName: 'ID', width: 60 },
+        { field: 'name', headerName: 'Name', pinned: 'left' },
+        { field: 'score', headerName: 'Score', valueFormatter: (v) => `${v}%` },
+      ]);
+      const order = headerCells().map((el) => el.textContent?.trim().split(' ')[0]);
+      expect(order).toEqual(['Name', 'ID', 'Score']);
+    });
+  });
 });

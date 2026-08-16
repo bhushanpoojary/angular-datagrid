@@ -31,6 +31,8 @@ class AutoFocusDirective implements AfterViewInit {
 interface ResolvedColumn<TData> {
   def: ColDef<TData>;
   key: string;
+  width: number;
+  pinned: 'left' | 'right' | null;
   style: Record<string, string>;
 }
 
@@ -80,19 +82,46 @@ export class DataGrid<TData = unknown> implements OnInit {
   private readonly currentPage = signal(0);
   private readonly selection = signal<ReadonlyMap<string | number, TData>>(new Map());
   private readonly editingCell = signal<{ rowKey: string | number; colKey: string } | null>(null);
+  /** User-dragged column order, as a list of column keys; `null` uses `columnDefs`' natural order. */
+  private readonly columnOrder = signal<string[] | null>(null);
+  /** User-dragged column widths (px), keyed by column key; overrides `col.width` when present. */
+  private readonly columnWidthOverrides = signal<Record<string, number>>({});
 
   protected readonly columns = computed<ResolvedColumn<TData>[]>(() => {
     const fallback = this.defaultColDef();
-    return this.columnDefs()
+    const overrides = this.columnWidthOverrides();
+    const merged = this.columnDefs()
       .filter((col) => !col.hide)
       .map((col, index) => {
-        const merged: ColDef<TData> = { ...fallback, ...col };
-        return {
-          def: merged,
-          key: merged.field ?? merged.headerName ?? String(index),
-          style: columnStyle(merged),
-        };
+        const def: ColDef<TData> = { ...fallback, ...col };
+        const key = def.field ?? def.headerName ?? String(index);
+        return { def, key, width: overrides[key] ?? def.width };
       });
+
+    const ordered = applyColumnOrder(merged, this.columnOrder());
+    const grouped = groupByPinned(ordered);
+
+    let leftOffset = 0;
+    let rightOffset = grouped
+      .filter((entry) => entry.def.pinned === 'right')
+      .reduce((sum, entry) => sum + resolvedColumnWidth(entry.def, entry.width), 0);
+
+    return grouped.map((entry): ResolvedColumn<TData> => {
+      const width = resolvedColumnWidth(entry.def, entry.width);
+      const style = columnStyle(entry.def, entry.width);
+      if (entry.def.pinned === 'left') {
+        style['position'] = 'sticky';
+        style['left'] = `${leftOffset}px`;
+        style['z-index'] = '1';
+        leftOffset += width;
+      } else if (entry.def.pinned === 'right') {
+        rightOffset -= width;
+        style['position'] = 'sticky';
+        style['right'] = `${rightOffset}px`;
+        style['z-index'] = '1';
+      }
+      return { def: entry.def, key: entry.key, width, pinned: entry.def.pinned ?? null, style };
+    });
   });
 
   protected readonly hasColumnFilters = computed(() => this.columns().some((col) => !!col.def.filter));
@@ -101,7 +130,7 @@ export class DataGrid<TData = unknown> implements OnInit {
    * (via CSS `min-width` + `.gd-root { overflow-x: auto }`) instead of columns being silently
    * clipped/pushed off-screen when the container is narrower than the content. */
   protected readonly contentMinWidth = computed<string>(() => {
-    const total = this.columns().reduce((sum, col) => sum + (col.def.width ?? col.def.minWidth ?? 120), 0);
+    const total = this.columns().reduce((sum, col) => sum + col.width, 0);
     return `${total}px`;
   });
 
@@ -397,6 +426,57 @@ export class DataGrid<TData = unknown> implements OnInit {
     if (index === -1) return {};
     return { direction: sorts[index].direction, order: sorts.length > 1 ? index + 1 : undefined };
   }
+
+  protected isResizable(col: ResolvedColumn<TData>): boolean {
+    return col.def.resizable !== false;
+  }
+
+  /** Drag-resizes a column from its header's right-edge handle; listens on `document` so the
+   * drag continues even if the pointer leaves the handle/header cell. */
+  protected onResizeStart(col: ResolvedColumn<TData>, event: MouseEvent): void {
+    if (!this.isResizable(col)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = this.columnWidthOverrides()[col.key] ?? col.width;
+
+    const onMove = (moveEvent: MouseEvent): void => {
+      const next = Math.max(30, startWidth + (moveEvent.clientX - startX));
+      this.columnWidthOverrides.update((current) => ({ ...current, [col.key]: next }));
+    };
+    const onUp = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /** Column reorder via native HTML5 drag-and-drop on the header cell (excludes the resize handle). */
+  protected onHeaderDragStart(col: ResolvedColumn<TData>, event: DragEvent): void {
+    event.dataTransfer?.setData('text/plain', col.key);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  protected onHeaderDragOver(event: DragEvent): void {
+    event.preventDefault();
+  }
+
+  protected onHeaderDrop(targetCol: ResolvedColumn<TData>, event: DragEvent): void {
+    event.preventDefault();
+    const sourceKey = event.dataTransfer?.getData('text/plain');
+    if (!sourceKey || sourceKey === targetCol.key) return;
+
+    const keys = this.columns().map((col) => col.key);
+    const from = keys.indexOf(sourceKey);
+    const to = keys.indexOf(targetCol.key);
+    if (from === -1 || to === -1) return;
+
+    const next = [...keys];
+    next.splice(from, 1);
+    next.splice(to, 0, sourceKey);
+    this.columnOrder.set(next);
+  }
 }
 
 function nextSortState(current: SortEntry[], key: string, multi: boolean): SortEntry[] {
@@ -474,11 +554,42 @@ function coerceEditedValue(
   return raw;
 }
 
-function columnStyle<TData>(col: ColDef<TData>): Record<string, string> {
+function columnStyle<TData>(col: ColDef<TData>, widthOverride?: number): Record<string, string> {
+  const width = widthOverride ?? col.width;
   const style: Record<string, string> = {
-    flex: col.width != null ? `0 0 ${col.width}px` : `${col.flex ?? 1} 1 0`,
+    flex: width != null ? `0 0 ${width}px` : `${col.flex ?? 1} 1 0`,
   };
   if (col.minWidth != null) style['min-width'] = `${col.minWidth}px`;
   if (col.maxWidth != null) style['max-width'] = `${col.maxWidth}px`;
   return style;
+}
+
+interface MergedColumn<TData> {
+  def: ColDef<TData>;
+  key: string;
+  width?: number;
+}
+
+/** Reorders `columns` to match a stored key order (from drag-reordering); any column not present
+ * in `order` (e.g. newly added to `columnDefs`) keeps its natural relative position at the end. */
+function applyColumnOrder<TData>(columns: MergedColumn<TData>[], order: string[] | null): MergedColumn<TData>[] {
+  if (!order) return columns;
+  const byKey = new Map(columns.map((col) => [col.key, col]));
+  const ordered = order.map((key) => byKey.get(key)).filter((col): col is MergedColumn<TData> => !!col);
+  const orderedKeys = new Set(ordered.map((col) => col.key));
+  const remaining = columns.filter((col) => !orderedKeys.has(col.key));
+  return [...ordered, ...remaining];
+}
+
+/** Clusters pinned-left columns first, then unpinned, then pinned-right - preserving each group's
+ * relative order (Array#filter is a stable partition). */
+function groupByPinned<TData>(columns: MergedColumn<TData>[]): MergedColumn<TData>[] {
+  const left = columns.filter((col) => col.def.pinned === 'left');
+  const right = columns.filter((col) => col.def.pinned === 'right');
+  const middle = columns.filter((col) => col.def.pinned !== 'left' && col.def.pinned !== 'right');
+  return [...left, ...middle, ...right];
+}
+
+function resolvedColumnWidth<TData>(col: ColDef<TData>, widthOverride?: number): number {
+  return widthOverride ?? col.width ?? col.minWidth ?? 120;
 }

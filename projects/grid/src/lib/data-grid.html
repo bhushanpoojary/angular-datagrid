@@ -14,8 +14,12 @@
         [class.gd-cell--sortable]="col.def.sortable"
         [attr.tabindex]="col.def.sortable ? 0 : null"
         [attr.aria-sort]="sortInfo(col).direction === 'asc' ? 'ascending' : sortInfo(col).direction === 'desc' ? 'descending' : col.def.sortable ? 'none' : null"
+        draggable="true"
         (click)="onHeaderClick(col, $event)"
         (keydown)="onHeaderKeydown(col, $event)"
+        (dragstart)="onHeaderDragStart(col, $event)"
+        (dragover)="onHeaderDragOver($event)"
+        (drop)="onHeaderDrop(col, $event)"
       >
         <span class="gd-cell__label">{{ col.def.headerName ?? col.def.field }}</span>
         @if (col.def.checkboxSelection && rowSelection() === 'multiple') {
@@ -36,6 +40,16 @@
             }
           </span>
         }
+        @if (isResizable(col)) {
+          <span
+            class="gd-col-resizer"
+            role="separator"
+            [attr.aria-label]="'Resize ' + (col.def.headerName ?? col.def.field)"
+            (mousedown)="onResizeStart(col, $event)"
+            (click)="$event.stopPropagation()"
+            (keydown)="$event.stopPropagation()"
+          ></span>
+        }
       </div>
     }
   </div>
@@ -43,7 +57,7 @@
   @if (hasColumnFilters()) {
     <div class="gd-row gd-row--filter" role="row" [style.min-width]="contentMinWidth()">
       @for (col of columns(); track col.key) {
-        <div class="gd-cell gd-cell--filter" role="gridcell" [style]="col.style">
+        <div class="gd-cell gd-cell--filter" role="gridcell" [style]="col.style" [class.gd-cell--pinned]="col.pinned">
           @if (col.def.filter) {
             <input
               type="text"
@@ -84,6 +98,7 @@
               [ngClass]="col.def.cellClass"
               [style]="col.style"
               [class.gd-cell--editable]="isEditable(col, row)"
+              [class.gd-cell--pinned]="col.pinned"
               [attr.tabindex]="isEditable(col, row) ? 0 : null"
               (click)="onCellClick(row, rowIndex, col, $event)"
               (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
@@ -121,6 +136,7 @@
             [ngClass]="col.def.cellClass"
             [style]="col.style"
             [class.gd-cell--editable]="isEditable(col, row)"
+            [class.gd-cell--pinned]="col.pinned"
             [attr.tabindex]="isEditable(col, row) ? 0 : null"
             (click)="onCellClick(row, rowIndex, col, $event)"
             (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
