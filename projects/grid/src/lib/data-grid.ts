@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, input, output, signal } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import type { ColDef } from '../models/col-def';
@@ -9,6 +9,11 @@ interface ResolvedColumn<TData> {
   def: ColDef<TData>;
   key: string;
   style: Record<string, string>;
+}
+
+interface SortEntry {
+  key: string;
+  direction: 'asc' | 'desc';
 }
 
 @Component({
@@ -31,6 +36,8 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   readonly gridReady = output<GridReadyEvent>();
 
+  private readonly sortState = signal<SortEntry[]>([]);
+
   protected readonly columns = computed<ResolvedColumn<TData>[]>(() => {
     const fallback = this.defaultColDef();
     return this.columnDefs()
@@ -45,7 +52,31 @@ export class DataGrid<TData = unknown> implements OnInit {
       });
   });
 
+  protected readonly sortedRows = computed<readonly TData[]>(() => {
+    const sorts = this.sortState();
+    if (sorts.length === 0) return this.rowData();
+
+    const columnsByKey = new Map(this.columns().map((col) => [col.key, col.def]));
+    return [...this.rowData()].sort((rowA, rowB) => {
+      for (const sort of sorts) {
+        const col = columnsByKey.get(sort.key);
+        if (!col) continue;
+        const valueA = this.cellValue(rowA, col);
+        const valueB = this.cellValue(rowB, col);
+        const cmp = col.comparator ? col.comparator(valueA, valueB, rowA, rowB) : defaultCompare(valueA, valueB);
+        if (cmp !== 0) return sort.direction === 'desc' ? -cmp : cmp;
+      }
+      return 0;
+    });
+  });
+
   ngOnInit(): void {
+    const initialSort = this.columns()
+      .filter((col) => col.def.sort)
+      .sort((a, b) => (a.def.sortIndex ?? 0) - (b.def.sortIndex ?? 0))
+      .map((col): SortEntry => ({ key: col.key, direction: col.def.sort! }));
+    this.sortState.set(initialSort);
+
     this.gridReady.emit({ rowCount: this.rowData().length, columnCount: this.columns().length });
   }
 
@@ -61,6 +92,54 @@ export class DataGrid<TData = unknown> implements OnInit {
     if (col.valueFormatter) return col.valueFormatter(value);
     return value == null ? '' : String(value);
   }
+
+  protected onHeaderClick(col: ResolvedColumn<TData>, event: MouseEvent): void {
+    this.toggleSort(col, event.shiftKey);
+  }
+
+  protected onHeaderKeydown(col: ResolvedColumn<TData>, event: KeyboardEvent): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    this.toggleSort(col, event.shiftKey);
+  }
+
+  private toggleSort(col: ResolvedColumn<TData>, multi: boolean): void {
+    if (!col.def.sortable) return;
+    this.sortState.update((current) => nextSortState(current, col.key, multi));
+  }
+
+  /** Sort direction + 1-based order (only shown once >1 column is sorted) for a header's aria/indicator. */
+  protected sortInfo(col: ResolvedColumn<TData>): { direction?: 'asc' | 'desc'; order?: number } {
+    const sorts = this.sortState();
+    const index = sorts.findIndex((sort) => sort.key === col.key);
+    if (index === -1) return {};
+    return { direction: sorts[index].direction, order: sorts.length > 1 ? index + 1 : undefined };
+  }
+}
+
+function nextSortState(current: SortEntry[], key: string, multi: boolean): SortEntry[] {
+  const existing = current.find((entry) => entry.key === key);
+  const next = nextDirection(existing?.direction);
+
+  if (!multi) {
+    return next ? [{ key, direction: next }] : [];
+  }
+  const withoutKey = current.filter((entry) => entry.key !== key);
+  return next ? [...withoutKey, { key, direction: next }] : withoutKey;
+}
+
+function nextDirection(current: 'asc' | 'desc' | undefined): 'asc' | 'desc' | undefined {
+  if (current === undefined) return 'asc';
+  return current === 'asc' ? 'desc' : undefined;
+}
+
+function defaultCompare(valueA: unknown, valueB: unknown): number {
+  if (valueA == null && valueB == null) return 0;
+  if (valueA == null) return -1;
+  if (valueB == null) return 1;
+  if (typeof valueA === 'number' && typeof valueB === 'number') return valueA - valueB;
+  if (valueA instanceof Date && valueB instanceof Date) return valueA.getTime() - valueB.getTime();
+  return String(valueA).localeCompare(String(valueB));
 }
 
 function columnStyle<TData>(col: ColDef<TData>): Record<string, string> {

@@ -6,8 +6,26 @@
 >
   <div class="gd-row gd-row--header" role="row">
     @for (col of columns(); track col.key) {
-      <div class="gd-cell gd-cell--header" role="columnheader" [ngClass]="col.def.cellClass" [style]="col.style">
-        {{ col.def.headerName ?? col.def.field }}
+      <div
+        class="gd-cell gd-cell--header"
+        role="columnheader"
+        [ngClass]="col.def.cellClass"
+        [style]="col.style"
+        [class.gd-cell--sortable]="col.def.sortable"
+        [attr.tabindex]="col.def.sortable ? 0 : null"
+        [attr.aria-sort]="sortInfo(col).direction === 'asc' ? 'ascending' : sortInfo(col).direction === 'desc' ? 'descending' : col.def.sortable ? 'none' : null"
+        (click)="onHeaderClick(col, $event)"
+        (keydown)="onHeaderKeydown(col, $event)"
+      >
+        <span class="gd-cell__label">{{ col.def.headerName ?? col.def.field }}</span>
+        @if (sortInfo(col).direction) {
+          <span class="gd-sort-indicator">
+            {{ sortInfo(col).direction === 'asc' ? '▲' : '▼' }}
+            @if (sortInfo(col).order) {
+              <sup>{{ sortInfo(col).order }}</sup>
+            }
+          </span>
+        }
       </div>
     }
   </div>
@@ -23,7 +41,7 @@
         role="row"
         [style.height.px]="rowHeight()"
         [attr.aria-rowindex]="rowIndex + 2"
-        *cdkVirtualFor="let row of rowData(); trackBy: trackRow; let rowIndex = index"
+        *cdkVirtualFor="let row of sortedRows(); trackBy: trackRow; let rowIndex = index"
       >
         @for (col of columns(); track col.key) {
           <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">

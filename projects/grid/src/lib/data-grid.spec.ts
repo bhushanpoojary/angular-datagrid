@@ -99,4 +99,98 @@ describe('DataGrid', () => {
     await setInputs(rowData, columnDefs);
     expect(events).toEqual([{ rowCount: 2, columnCount: 3 }]);
   });
+
+  describe('sorting', () => {
+    const threeRows: Row[] = [
+      { id: 1, name: 'Charlie', score: 70 },
+      { id: 2, name: 'Alpha', score: 90 },
+      { id: 3, name: 'Bravo', score: 80 },
+    ];
+    const sortableDefs: ColDef<Row>[] = [
+      { field: 'id', headerName: 'ID' },
+      { field: 'name', headerName: 'Name', sortable: true },
+      { field: 'score', headerName: 'Score', sortable: true },
+    ];
+
+    function bodyText(): string[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-row .gd-cell:first-child'),
+      ).map((el) => (el.textContent ?? '').trim());
+    }
+
+    function headerFor(name: string): HTMLElement {
+      const headers = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[role="columnheader"]'),
+      );
+      const header = headers.find((el) => el.textContent?.includes(name));
+      if (!header) throw new Error(`header ${name} not found`);
+      return header;
+    }
+
+    it('applies declarative default sort (lowest sortIndex wins)', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', sortable: true, sort: 'asc', sortIndex: 1 },
+        { field: 'score', headerName: 'Score', sortable: true, sort: 'desc', sortIndex: 0 },
+      ]);
+      expect(bodyText()).toEqual(['2', '3', '1']); // sorted by score desc: 90, 80, 70
+    });
+
+    it('ignores clicks on non-sortable headers', async () => {
+      await setInputs(threeRows, sortableDefs);
+      headerFor('ID').click();
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['1', '2', '3']);
+    });
+
+    it('cycles a single column asc -> desc -> unsorted on repeated clicks', async () => {
+      await setInputs(threeRows, sortableDefs);
+      const nameHeader = headerFor('Name');
+
+      nameHeader.click();
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['2', '3', '1']); // Alpha, Bravo, Charlie
+
+      nameHeader.click();
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['1', '3', '2']); // Charlie, Bravo, Alpha
+
+      nameHeader.click();
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['1', '2', '3']); // back to original order
+    });
+
+    it('supports multi-column sort via shift-click', async () => {
+      const tied: Row[] = [
+        { id: 1, name: 'B', score: 50 },
+        { id: 2, name: 'A', score: 50 },
+        { id: 3, name: 'A', score: 40 },
+      ];
+      await setInputs(tied, sortableDefs);
+
+      headerFor('Score').click();
+      fixture.detectChanges();
+      headerFor('Name').dispatchEvent(new MouseEvent('click', { shiftKey: true, bubbles: true }));
+      fixture.detectChanges();
+
+      // score asc first (40, 50, 50), name asc breaks the score=50 tie (A before B)
+      expect(bodyText()).toEqual(['3', '2', '1']);
+    });
+
+    it('uses a custom comparator when provided', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name' },
+        {
+          field: 'score',
+          headerName: 'Score',
+          sortable: true,
+          comparator: (a, b) => (b as number) - (a as number), // reversed vs. default
+        },
+      ]);
+      headerFor('Score').click();
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['2', '3', '1']); // reversed comparator flips the usual asc order
+    });
+  });
 });

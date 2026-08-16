@@ -39,6 +39,27 @@
   border-right: none;
 }
 
+.gd-cell--header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gd-cell--sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.gd-cell__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gd-sort-indicator {
+  font-size: 10px;
+  color: var(--gd-accent-color, #2563eb);
+}
+
 .gd-empty {
   padding: 16px;
   text-align: center;

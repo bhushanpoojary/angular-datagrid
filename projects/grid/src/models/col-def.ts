@@ -7,6 +7,12 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   maxWidth?: number;
   flex?: number;
   sortable?: boolean;
+  /** Declarative initial sort direction, applied on first render. */
+  sort?: 'asc' | 'desc';
+  /** When multiple columns declare `sort`, the lowest `sortIndex` is applied first. */
+  sortIndex?: number;
+  /** Custom comparator; defaults to a numeric/date/locale-aware comparison of resolved values. */
+  comparator?: (valueA: TValue, valueB: TValue, rowA: TData, rowB: TData) => number;
   hide?: boolean;
   pinned?: 'left' | 'right' | null;
   cellClass?: string | string[];
