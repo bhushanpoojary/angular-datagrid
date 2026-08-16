@@ -35,11 +35,16 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly getRowId = input<(row: TData, index: number) => string | number>((_row, index) => index);
   /** Global search text matched against every visible column's displayed value. */
   readonly quickFilterText = input<string>('');
+  /** Enables client-side pagination; when true, the virtualized viewport is replaced with a pager. */
+  readonly pagination = input<boolean>(false);
+  /** Rows per page when `pagination` is enabled. */
+  readonly pageSize = input<number>(50);
 
   readonly gridReady = output<GridReadyEvent>();
 
   private readonly sortState = signal<SortEntry[]>([]);
   private readonly columnFilters = signal<Record<string, string>>({});
+  private readonly currentPage = signal(0);
 
   protected readonly columns = computed<ResolvedColumn<TData>[]>(() => {
     const fallback = this.defaultColDef();
@@ -104,6 +109,19 @@ export class DataGrid<TData = unknown> implements OnInit {
     });
   });
 
+  protected readonly pageCount = computed(() =>
+    this.pagination() ? Math.max(1, Math.ceil(this.sortedRows().length / this.pageSize())) : 1,
+  );
+
+  /** Clamped so filtering/sorting/pageSize changes never leave the page pointing past the end. */
+  protected readonly safeCurrentPage = computed(() => Math.min(this.currentPage(), this.pageCount() - 1));
+
+  protected readonly pagedRows = computed<readonly TData[]>(() => {
+    if (!this.pagination()) return this.sortedRows();
+    const start = this.safeCurrentPage() * this.pageSize();
+    return this.sortedRows().slice(start, start + this.pageSize());
+  });
+
   ngOnInit(): void {
     const initialSort = this.columns()
       .filter((col) => col.def.sort)
@@ -115,6 +133,19 @@ export class DataGrid<TData = unknown> implements OnInit {
   }
 
   protected trackRow = (index: number, row: TData): string | number => this.getRowId()(row, index);
+
+  protected goToPage(page: number): void {
+    this.currentPage.set(Math.min(Math.max(page, 0), this.pageCount() - 1));
+  }
+
+  /** e.g. "1-50 of 320" for the pager footer; "0 of 0" when there are no rows. */
+  protected pageRangeText(): string {
+    const total = this.sortedRows().length;
+    if (total === 0) return '0 of 0';
+    const start = this.safeCurrentPage() * this.pageSize() + 1;
+    const end = Math.min(start + this.pageSize() - 1, total);
+    return `${start}-${end} of ${total}`;
+  }
 
   protected cellValue(row: TData, col: ColDef<TData>): unknown {
     if (col.valueGetter) return col.valueGetter(row);

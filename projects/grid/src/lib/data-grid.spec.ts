@@ -54,7 +54,9 @@ describe('DataGrid', () => {
 
   function bodyText(): string[] {
     return Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-viewport .gd-row .gd-cell:first-child'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.gd-viewport .gd-row .gd-cell:first-child, .gd-body--paged .gd-row .gd-cell:first-child',
+      ),
     ).map((el) => (el.textContent ?? '').trim());
   }
 
@@ -65,6 +67,16 @@ describe('DataGrid', () => {
     const header = headers.find((el) => el.textContent?.includes(name));
     if (!header) throw new Error(`header ${name} not found`);
     return header;
+  }
+
+  function setFilterInput(headerName: string, value: string): void {
+    const filterInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      `[aria-label="Filter ${headerName}"]`,
+    );
+    if (!filterInput) throw new Error(`filter input for ${headerName} not found`);
+    filterInput.value = value;
+    filterInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
   }
 
   it('should create', () => {
@@ -201,16 +213,6 @@ describe('DataGrid', () => {
       { id: 3, name: 'Bravo', score: 80 },
     ];
 
-    function setFilterInput(headerName: string, value: string): void {
-      const filterInput = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
-        `[aria-label="Filter ${headerName}"]`,
-      );
-      if (!filterInput) throw new Error(`filter input for ${headerName} not found`);
-      filterInput.value = value;
-      filterInput.dispatchEvent(new Event('input'));
-      fixture.detectChanges();
-    }
-
     it('does not render a filter row when no column declares `filter`', async () => {
       await setInputs(threeRows, [
         { field: 'id', headerName: 'ID' },
@@ -257,6 +259,77 @@ describe('DataGrid', () => {
       ]);
       setFilterInput('Name', 'zzz');
       expect((fixture.nativeElement as HTMLElement).textContent).toContain('No rows to display');
+    });
+  });
+
+  describe('pagination', () => {
+    const fiveRows: Row[] = Array.from({ length: 5 }, (_, i) => ({
+      id: i + 1,
+      name: `Row ${i + 1}`,
+      score: i,
+    }));
+
+    function pagerText(): string {
+      return (fixture.nativeElement as HTMLElement).querySelector('.gd-pager')?.textContent ?? '';
+    }
+
+    function clickPagerButton(label: string): void {
+      const buttons = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.gd-pager__buttons button'),
+      );
+      const button = buttons.find((b) => b.textContent?.includes(label));
+      if (!button) throw new Error(`pager button "${label}" not found`);
+      button.click();
+      fixture.detectChanges();
+    }
+
+    it('shows only pageSize rows per page and a range summary', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      fixture.componentRef.setInput('pageSize', 2);
+      await setInputs(fiveRows, columnDefs);
+      expect(bodyText()).toEqual(['1', '2']);
+      expect(pagerText()).toContain('1-2 of 5');
+      expect(pagerText()).toContain('Page 1 of 3');
+    });
+
+    it('navigates with Next/Prev/First/Last', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      fixture.componentRef.setInput('pageSize', 2);
+      await setInputs(fiveRows, columnDefs);
+
+      clickPagerButton('Next');
+      expect(bodyText()).toEqual(['3', '4']);
+
+      clickPagerButton('Last');
+      expect(bodyText()).toEqual(['5']);
+      expect(pagerText()).toContain('Page 3 of 3');
+
+      clickPagerButton('First');
+      expect(bodyText()).toEqual(['1', '2']);
+
+      clickPagerButton('Next');
+      clickPagerButton('Prev');
+      expect(bodyText()).toEqual(['1', '2']);
+    });
+
+    it('clamps back onto a valid page when filtering shrinks the result set', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      fixture.componentRef.setInput('pageSize', 2);
+      await setInputs(fiveRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', filter: 'text' },
+        { field: 'score', headerName: 'Score' },
+      ]);
+
+      clickPagerButton('Last'); // page 3 of 3 (row 5 only)
+      setFilterInput('Name', 'Row 1'); // only "Row 1" matches -> 1 row, 1 page
+      expect(bodyText()).toEqual(['1']);
+      expect(pagerText()).toContain('Page 1 of 1');
+    });
+
+    it('does not render a pager when pagination is disabled', async () => {
+      await setInputs(fiveRows, columnDefs);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-pager')).toBeNull();
     });
   });
 });

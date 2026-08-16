@@ -53,6 +53,18 @@
     <div class="gd-empty" role="row">
       <div class="gd-cell" role="gridcell">No rows to display</div>
     </div>
+  } @else if (pagination()) {
+    <div class="gd-body gd-body--paged" [style.min-width]="contentMinWidth()">
+      @for (row of pagedRows(); track trackRow($index, row); let rowIndex = $index) {
+        <div class="gd-row" role="row" [style.height.px]="rowHeight()" [attr.aria-rowindex]="rowIndex + 2">
+          @for (col of columns(); track col.key) {
+            <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
+              {{ cellDisplay(row, col.def) }}
+            </div>
+          }
+        </div>
+      }
+    </div>
   } @else {
     <cdk-virtual-scroll-viewport
       [itemSize]="rowHeight()"
@@ -74,5 +86,32 @@
         }
       </div>
     </cdk-virtual-scroll-viewport>
+  }
+
+  @if (pagination() && sortedRows().length > 0) {
+    <div class="gd-pager">
+      <span class="gd-pager__range">{{ pageRangeText() }}</span>
+      <div class="gd-pager__buttons">
+        <button type="button" (click)="goToPage(0)" [disabled]="safeCurrentPage() === 0">« First</button>
+        <button type="button" (click)="goToPage(safeCurrentPage() - 1)" [disabled]="safeCurrentPage() === 0">
+          ‹ Prev
+        </button>
+        <span class="gd-pager__page">Page {{ safeCurrentPage() + 1 }} of {{ pageCount() }}</span>
+        <button
+          type="button"
+          (click)="goToPage(safeCurrentPage() + 1)"
+          [disabled]="safeCurrentPage() >= pageCount() - 1"
+        >
+          Next ›
+        </button>
+        <button
+          type="button"
+          (click)="goToPage(pageCount() - 1)"
+          [disabled]="safeCurrentPage() >= pageCount() - 1"
+        >
+          Last »
+        </button>
+      </div>
+    </div>
   }
 </div>
