@@ -1,8 +1,31 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, input, output, signal } from '@angular/core';
-import { NgClass } from '@angular/common';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  Directive,
+  ElementRef,
+  OnInit,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
+import { NgClass, NgTemplateOutlet } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import type { ColDef } from '../models/col-def';
-import type { GridReadyEvent } from '../models/grid-events';
+import type { CellValueChangedEvent, GridReadyEvent } from '../models/grid-events';
+
+/** Focuses its host element once inserted - used for the inline cell editor instead of the
+ * disallowed `autofocus` HTML attribute (flagged by @angular-eslint/template/no-autofocus). */
+@Directive({ selector: '[gdAutoFocus]' })
+class AutoFocusDirective implements AfterViewInit {
+  private readonly host = inject(ElementRef<HTMLElement>);
+
+  ngAfterViewInit(): void {
+    queueMicrotask(() => this.host.nativeElement.focus());
+  }
+}
 
 /** A column def merged with `defaultColDef` and its resolved flex-box sizing. */
 interface ResolvedColumn<TData> {
@@ -18,7 +41,7 @@ interface SortEntry {
 
 @Component({
   selector: 'gd-data-grid',
-  imports: [NgClass, ScrollingModule],
+  imports: [NgClass, NgTemplateOutlet, ScrollingModule, AutoFocusDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './data-grid.html',
   styleUrl: './data-grid.css',
@@ -43,15 +66,20 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly pageSize = input<number>(50);
   /** Row selection mode; `'none'` disables selection entirely (default). */
   readonly rowSelection = input<'none' | 'single' | 'multiple'>('none');
+  /** Starts inline editing on a single click instead of the default double-click. */
+  readonly singleClickEdit = input<boolean>(false);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
   readonly selectionChanged = output<TData[]>();
+  /** Fires after an inline edit is committed (Enter or blur). */
+  readonly cellValueChanged = output<CellValueChangedEvent<TData>>();
 
   private readonly sortState = signal<SortEntry[]>([]);
   private readonly columnFilters = signal<Record<string, string>>({});
   private readonly currentPage = signal(0);
   private readonly selection = signal<ReadonlyMap<string | number, TData>>(new Map());
+  private readonly editingCell = signal<{ rowKey: string | number; colKey: string } | null>(null);
 
   protected readonly columns = computed<ResolvedColumn<TData>[]>(() => {
     const fallback = this.defaultColDef();
@@ -180,13 +208,16 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   protected onRowClick(row: TData, index: number, event: MouseEvent): void {
     // The checkbox's own (change) handler already toggles selection - avoid double-toggling.
-    if ((event.target as HTMLElement).closest('input[type="checkbox"]')) return;
+    // Editable cells handle their own click/dblclick to start editing instead of selecting.
+    const target = event.target as HTMLElement;
+    if (target.closest('input[type="checkbox"]') || target.closest('.gd-cell--editable')) return;
     this.toggleRowSelection(row, index);
   }
 
   protected onRowKeydown(row: TData, index: number, event: KeyboardEvent): void {
     if (event.key !== 'Enter' && event.key !== ' ') return;
-    if ((event.target as HTMLElement).closest('input[type="checkbox"]')) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('input[type="checkbox"]') || target.closest('.gd-cell--editable')) return;
     event.preventDefault();
     this.toggleRowSelection(row, index);
   }
@@ -206,6 +237,98 @@ export class DataGrid<TData = unknown> implements OnInit {
       return next;
     });
     this.selectionChanged.emit([...this.selection().values()]);
+  }
+
+  protected isEditable(col: ResolvedColumn<TData>, row: TData): boolean {
+    const editable = col.def.editable;
+    return typeof editable === 'function' ? editable(row) : !!editable;
+  }
+
+  protected isEditing(row: TData, index: number, col: ResolvedColumn<TData>): boolean {
+    const cell = this.editingCell();
+    return !!cell && cell.rowKey === this.rowId(row, index) && cell.colKey === col.key;
+  }
+
+  protected editorInitialValue(row: TData, col: ResolvedColumn<TData>): string {
+    const value = this.cellValue(row, col.def);
+    if (col.def.cellEditor === 'date') return value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? '');
+    return value == null ? '' : String(value);
+  }
+
+  protected editorInitialChecked(row: TData, col: ResolvedColumn<TData>): boolean {
+    return !!this.cellValue(row, col.def);
+  }
+
+  protected editorOptionSelected(row: TData, col: ResolvedColumn<TData>, optionValue: unknown): boolean {
+    return this.editorInitialValue(row, col) === String(optionValue);
+  }
+
+  protected onCellClick(row: TData, index: number, col: ResolvedColumn<TData>, event: MouseEvent): void {
+    if (!this.isEditable(col, row) || !this.singleClickEdit()) return;
+    event.stopPropagation();
+    this.startEdit(row, index, col);
+  }
+
+  protected onCellDblClick(row: TData, index: number, col: ResolvedColumn<TData>, event: MouseEvent): void {
+    if (!this.isEditable(col, row)) return;
+    event.stopPropagation();
+    this.startEdit(row, index, col);
+  }
+
+  protected onCellKeydown(row: TData, index: number, col: ResolvedColumn<TData>, event: KeyboardEvent): void {
+    if (!this.isEditable(col, row) || this.isEditing(row, index, col)) return;
+    if (event.key !== 'Enter' && event.key !== 'F2') return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.startEdit(row, index, col);
+  }
+
+  private startEdit(row: TData, index: number, col: ResolvedColumn<TData>): void {
+    this.editingCell.set({ rowKey: this.rowId(row, index), colKey: col.key });
+  }
+
+  protected cancelEdit(): void {
+    this.editingCell.set(null);
+  }
+
+  protected onEditorKeydown(row: TData, col: ResolvedColumn<TData>, event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      // Stop the bubbled keydown from also reaching the cell's own Enter/F2-to-start-editing
+      // handler, which would otherwise see editing just turned off and reopen it immediately.
+      event.stopPropagation();
+      this.commitEditFromTarget(row, col, event.target);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.cancelEdit();
+    }
+  }
+
+  protected onEditorBlur(row: TData, col: ResolvedColumn<TData>, event: Event): void {
+    this.commitEditFromTarget(row, col, event.target);
+  }
+
+  private commitEditFromTarget(row: TData, col: ResolvedColumn<TData>, target: EventTarget | null): void {
+    // Guards against a second blur firing after Enter/Escape already closed the editor.
+    if (!this.editingCell()) return;
+    if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+      this.commitEdit(row, col, target.checked);
+    } else if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
+      this.commitEdit(row, col, target.value);
+    }
+  }
+
+  private commitEdit(row: TData, col: ResolvedColumn<TData>, raw: string | boolean): void {
+    const field = col.def.field;
+    const oldValue = this.cellValue(row, col.def);
+    const newValue = coerceEditedValue(raw, col.def.cellEditor, col.def.cellEditorParams?.options);
+
+    if (col.def.valueSetter) col.def.valueSetter(row, newValue);
+    else if (field) (row as Record<string, unknown>)[field] = newValue;
+
+    this.editingCell.set(null);
+    this.cellValueChanged.emit({ row, field, oldValue, newValue });
   }
 
   protected goToPage(page: number): void {
@@ -335,6 +458,20 @@ function matchesColumnFilter(value: unknown, filterText: string, type: 'text' | 
   return String(value ?? '')
     .toLowerCase()
     .includes(filterText.toLowerCase());
+}
+
+function coerceEditedValue(
+  raw: string | boolean,
+  editorType: 'text' | 'number' | 'select' | 'date' | 'checkbox' | undefined,
+  options: { label: string; value: unknown }[] | undefined,
+): unknown {
+  if (editorType === 'checkbox') return !!raw;
+  if (editorType === 'number') return raw === '' ? null : Number(raw);
+  if (editorType === 'select' && options) {
+    const match = options.find((option) => String(option.value) === String(raw));
+    return match ? match.value : raw;
+  }
+  return raw;
 }
 
 function columnStyle<TData>(col: ColDef<TData>): Record<string, string> {

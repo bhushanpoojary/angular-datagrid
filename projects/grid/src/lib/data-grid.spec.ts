@@ -10,6 +10,8 @@ interface Row {
   id: number;
   name: string;
   score: number;
+  active?: boolean;
+  team?: string;
 }
 
 describe('DataGrid', () => {
@@ -426,6 +428,195 @@ describe('DataGrid', () => {
       const rows = bodyRows();
       const selectedIndex = rows.findIndex((row) => row.classList.contains('gd-row--selected'));
       expect(bodyText()[selectedIndex]).toBe('2'); // Alpha's id, still selected after reordering
+    });
+  });
+
+  describe('editing', () => {
+    // Fresh objects per test - these tests mutate rows in place, and a shared `const`
+    // across `it` blocks would leak edits from one test into the next.
+    let twoRows: Row[];
+    beforeEach(() => {
+      twoRows = [
+        { id: 1, name: 'Charlie', score: 70, active: false, team: 'Red' },
+        { id: 2, name: 'Alpha', score: 90, active: true, team: 'Blue' },
+      ];
+    });
+
+    function cellAt(rowIndex: number, colIndex: number): HTMLElement {
+      const rows = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.gd-viewport .gd-row, .gd-body--paged .gd-row',
+        ),
+      );
+      const cells = rows[rowIndex].querySelectorAll<HTMLElement>('.gd-cell');
+      return cells[colIndex];
+    }
+
+    it('does nothing on double-click when the column is not editable', async () => {
+      await setInputs(twoRows, columnDefs);
+      cellAt(0, 1).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+      expect(cellAt(0, 1).querySelector('.gd-edit-input')).toBeNull();
+    });
+
+    it('text editor: double-click starts editing, Enter commits, and cellValueChanged fires', async () => {
+      const events: unknown[] = [];
+      component.cellValueChanged.subscribe((e) => events.push(e));
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', editable: true },
+        { field: 'score', headerName: 'Score' },
+      ]);
+
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const input = cell.querySelector<HTMLInputElement>('.gd-edit-input');
+      expect(input).not.toBeNull();
+      expect(input!.value).toBe('Charlie');
+
+      input!.value = 'Charlotte';
+      input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(cellAt(0, 1).querySelector('.gd-edit-input')).toBeNull();
+      expect(cellAt(0, 1).textContent?.trim()).toBe('Charlotte');
+      expect(twoRows[0].name).toBe('Charlotte');
+      expect(events).toEqual([{ row: twoRows[0], field: 'name', oldValue: 'Charlie', newValue: 'Charlotte' }]);
+    });
+
+    it('Escape cancels an edit without committing', async () => {
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', editable: true },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const input = cell.querySelector<HTMLInputElement>('.gd-edit-input')!;
+      input.value = 'Should not stick';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(cellAt(0, 1).querySelector('.gd-edit-input')).toBeNull();
+      expect(cellAt(0, 1).textContent?.trim()).toBe('Charlie');
+    });
+
+    it('commits on blur too (e.g. clicking elsewhere)', async () => {
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', editable: true },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const input = cell.querySelector<HTMLInputElement>('.gd-edit-input')!;
+      input.value = 'Via blur';
+      input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(cellAt(0, 1).textContent?.trim()).toBe('Via blur');
+    });
+
+    it('number editor coerces the committed value to a number', async () => {
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'score', headerName: 'Score', editable: true, cellEditor: 'number' },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const input = cell.querySelector<HTMLInputElement>('.gd-edit-input')!;
+      input.value = '95';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(twoRows[0].score).toBe(95);
+      expect(typeof twoRows[0].score).toBe('number');
+    });
+
+    it('checkbox editor toggles a boolean value', async () => {
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'active', headerName: 'Active', editable: true, cellEditor: 'checkbox' },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const checkbox = cell.querySelector<HTMLInputElement>('.gd-edit-input')!;
+      expect(checkbox.checked).toBe(false);
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(twoRows[0].active).toBe(true);
+    });
+
+    it('select editor commits the matching option value', async () => {
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        {
+          field: 'team',
+          headerName: 'Team',
+          editable: true,
+          cellEditor: 'select',
+          cellEditorParams: {
+            options: [
+              { label: 'Red', value: 'Red' },
+              { label: 'Blue', value: 'Blue' },
+              { label: 'Green', value: 'Green' },
+            ],
+          },
+        },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const select = cell.querySelector<HTMLSelectElement>('.gd-edit-input')!;
+      select.value = 'Green';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(twoRows[0].team).toBe('Green');
+    });
+
+    it('singleClickEdit: a single click starts editing instead of double-click', async () => {
+      fixture.componentRef.setInput('singleClickEdit', true);
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', editable: true },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.click();
+      fixture.detectChanges();
+      expect(cell.querySelector('.gd-edit-input')).not.toBeNull();
+    });
+
+    it('a valueSetter is used instead of directly mutating the field, when provided', async () => {
+      const valueSetter = vi.fn((row: Row, value: unknown) => {
+        row.name = `[edited] ${value as string}`;
+      });
+      await setInputs(twoRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', editable: true, valueSetter },
+      ]);
+      const cell = cellAt(0, 1);
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      fixture.detectChanges();
+
+      const input = cell.querySelector<HTMLInputElement>('.gd-edit-input')!;
+      input.value = 'Zed';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(valueSetter).toHaveBeenCalledWith(twoRows[0], 'Zed');
+      expect(twoRows[0].name).toBe('[edited] Zed');
     });
   });
 });

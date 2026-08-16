@@ -78,18 +78,18 @@
           (keydown)="onRowKeydown(row, rowIndex, $event)"
         >
           @for (col of columns(); track col.key) {
-            <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
-              @if (col.def.checkboxSelection) {
-                <input
-                  type="checkbox"
-                  class="gd-select-checkbox"
-                  [attr.aria-label]="'Select row ' + (rowIndex + 1)"
-                  [checked]="isSelected(row, rowIndex)"
-                  (change)="toggleRowSelection(row, rowIndex)"
-                />
-              } @else {
-                {{ cellDisplay(row, col.def) }}
-              }
+            <div
+              class="gd-cell"
+              role="gridcell"
+              [ngClass]="col.def.cellClass"
+              [style]="col.style"
+              [class.gd-cell--editable]="isEditable(col, row)"
+              [attr.tabindex]="isEditable(col, row) ? 0 : null"
+              (click)="onCellClick(row, rowIndex, col, $event)"
+              (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
+              (keydown)="onCellKeydown(row, rowIndex, col, $event)"
+            >
+              <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
             </div>
           }
         </div>
@@ -115,18 +115,18 @@
         *cdkVirtualFor="let row of sortedRows(); trackBy: trackRow; let rowIndex = index"
       >
         @for (col of columns(); track col.key) {
-          <div class="gd-cell" role="gridcell" [ngClass]="col.def.cellClass" [style]="col.style">
-            @if (col.def.checkboxSelection) {
-              <input
-                type="checkbox"
-                class="gd-select-checkbox"
-                [attr.aria-label]="'Select row ' + (rowIndex + 1)"
-                [checked]="isSelected(row, rowIndex)"
-                (change)="toggleRowSelection(row, rowIndex)"
-              />
-            } @else {
-              {{ cellDisplay(row, col.def) }}
-            }
+          <div
+            class="gd-cell"
+            role="gridcell"
+            [ngClass]="col.def.cellClass"
+            [style]="col.style"
+            [class.gd-cell--editable]="isEditable(col, row)"
+            [attr.tabindex]="isEditable(col, row) ? 0 : null"
+            (click)="onCellClick(row, rowIndex, col, $event)"
+            (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
+            (keydown)="onCellKeydown(row, rowIndex, col, $event)"
+          >
+            <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
           </div>
         }
       </div>
@@ -160,3 +160,75 @@
     </div>
   }
 </div>
+
+<ng-template #cellContent let-row="row" let-col="col" let-rowIndex="rowIndex">
+  @if (col.def.checkboxSelection) {
+    <input
+      type="checkbox"
+      class="gd-select-checkbox"
+      [attr.aria-label]="'Select row ' + (rowIndex + 1)"
+      [checked]="isSelected(row, rowIndex)"
+      (change)="toggleRowSelection(row, rowIndex)"
+    />
+  } @else if (isEditing(row, rowIndex, col)) {
+    @switch (col.def.cellEditor ?? 'text') {
+      @case ('checkbox') {
+        <input
+          type="checkbox"
+          class="gd-edit-input"
+          gdAutoFocus
+          [checked]="editorInitialChecked(row, col)"
+          (blur)="onEditorBlur(row, col, $event)"
+          (keydown)="onEditorKeydown(row, col, $event)"
+        />
+      }
+      @case ('select') {
+        <select
+          class="gd-edit-input"
+          gdAutoFocus
+          (blur)="onEditorBlur(row, col, $event)"
+          (keydown)="onEditorKeydown(row, col, $event)"
+          (change)="onEditorBlur(row, col, $event)"
+        >
+          @for (option of col.def.cellEditorParams?.options ?? []; track option.label) {
+            <option [value]="option.value" [selected]="editorOptionSelected(row, col, option.value)">
+              {{ option.label }}
+            </option>
+          }
+        </select>
+      }
+      @case ('number') {
+        <input
+          type="number"
+          class="gd-edit-input"
+          gdAutoFocus
+          [value]="editorInitialValue(row, col)"
+          (blur)="onEditorBlur(row, col, $event)"
+          (keydown)="onEditorKeydown(row, col, $event)"
+        />
+      }
+      @case ('date') {
+        <input
+          type="date"
+          class="gd-edit-input"
+          gdAutoFocus
+          [value]="editorInitialValue(row, col)"
+          (blur)="onEditorBlur(row, col, $event)"
+          (keydown)="onEditorKeydown(row, col, $event)"
+        />
+      }
+      @default {
+        <input
+          type="text"
+          class="gd-edit-input"
+          gdAutoFocus
+          [value]="editorInitialValue(row, col)"
+          (blur)="onEditorBlur(row, col, $event)"
+          (keydown)="onEditorKeydown(row, col, $event)"
+        />
+      }
+    }
+  } @else {
+    {{ cellDisplay(row, col.def) }}
+  }
+</ng-template>

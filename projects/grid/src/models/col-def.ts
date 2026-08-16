@@ -18,6 +18,13 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   /** Renders a selection checkbox in this column's cells, and a select-all checkbox in its header
    * when `rowSelection` is `'multiple'`. Typically set on the first column. */
   checkboxSelection?: boolean;
+  /** Enables inline editing for this column (double-click, or single-click via `singleClickEdit`). */
+  editable?: boolean | ((row: TData) => boolean);
+  /** Editor widget shown while editing; defaults to `'text'`. */
+  cellEditor?: 'text' | 'number' | 'select' | 'date' | 'checkbox';
+  cellEditorParams?: { options?: { label: string; value: TValue }[] };
+  /** Applies a committed edit; defaults to `row[field] = value`. Use for computed/nested fields. */
+  valueSetter?: (row: TData, value: TValue) => void;
   hide?: boolean;
   pinned?: 'left' | 'right' | null;
   cellClass?: string | string[];

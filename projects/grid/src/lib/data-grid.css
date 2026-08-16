@@ -73,6 +73,19 @@
   user-select: none;
 }
 
+.gd-cell--editable {
+  cursor: text;
+}
+
+.gd-edit-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  font: inherit;
+  border: 1px solid var(--gd-accent-color, #2563eb);
+  border-radius: 3px;
+}
+
 .gd-cell__label {
   overflow: hidden;
   text-overflow: ellipsis;
