@@ -7,7 +7,7 @@
   [attr.aria-colcount]="columns().length"
 >
   <div class="gd-row gd-row--header" role="row" [style.min-width]="contentMinWidth()">
-    @for (col of columns(); track col.key) {
+    @for (col of columns(); track col.key; let colIndex = $index) {
       <div
         class="gd-cell gd-cell--header"
         role="columnheader"
@@ -15,6 +15,7 @@
         [style]="col.style"
         [class.gd-cell--sortable]="col.def.sortable"
         [attr.tabindex]="col.def.sortable ? 0 : null"
+        [attr.aria-colindex]="colIndex + 1"
         [attr.aria-sort]="sortInfo(col).direction === 'asc' ? 'ascending' : sortInfo(col).direction === 'desc' ? 'descending' : col.def.sortable ? 'none' : null"
         draggable="true"
         (click)="onHeaderClick(col, $event)"
@@ -98,7 +99,7 @@
           (click)="onRowClick(row, rowIndex, $event)"
           (keydown)="onRowKeydown(row, rowIndex, $event)"
         >
-          @for (col of columns(); track col.key) {
+          @for (col of columns(); track col.key; let colIndex = $index) {
             <div
               class="gd-cell"
               role="gridcell"
@@ -106,11 +107,13 @@
               [style]="col.style"
               [class.gd-cell--editable]="isEditable(col, row)"
               [class.gd-cell--pinned]="col.pinned"
-              [attr.tabindex]="isEditable(col, row) ? 0 : null"
+              [attr.tabindex]="isEditable(col, row) ? 0 : (isActiveCell(rowIndex, colIndex) ? 0 : -1)"
+              [attr.aria-colindex]="colIndex + 1"
               [attr.title]="cellTooltip(col, row)"
               (click)="onCellClick(row, rowIndex, col, $event)"
               (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
               (keydown)="onCellKeydown(row, rowIndex, col, $event)"
+              (focus)="onCellFocus(rowIndex, colIndex)"
             >
               <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
             </div>
@@ -138,7 +141,7 @@
         (keydown)="onRowKeydown(row, rowIndex, $event)"
         *cdkVirtualFor="let row of sortedRows(); trackBy: trackRow; let rowIndex = index"
       >
-        @for (col of columns(); track col.key) {
+        @for (col of columns(); track col.key; let colIndex = $index) {
           <div
             class="gd-cell"
             role="gridcell"
@@ -146,11 +149,13 @@
             [style]="col.style"
             [class.gd-cell--editable]="isEditable(col, row)"
             [class.gd-cell--pinned]="col.pinned"
-            [attr.tabindex]="isEditable(col, row) ? 0 : null"
+            [attr.tabindex]="isEditable(col, row) ? 0 : (isActiveCell(rowIndex, colIndex) ? 0 : -1)"
+            [attr.aria-colindex]="colIndex + 1"
             [attr.title]="cellTooltip(col, row)"
             (click)="onCellClick(row, rowIndex, col, $event)"
             (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
             (keydown)="onCellKeydown(row, rowIndex, col, $event)"
+            (focus)="onCellFocus(rowIndex, colIndex)"
           >
             <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
           </div>

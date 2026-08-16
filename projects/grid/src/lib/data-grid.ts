@@ -98,6 +98,9 @@ export class DataGrid<TData = unknown> implements OnInit {
   private readonly currentPage = signal(0);
   private readonly selection = signal<ReadonlyMap<string | number, TData>>(new Map());
   private readonly editingCell = signal<{ rowKey: string | number; colKey: string } | null>(null);
+  /** Roving-tabindex active cell for keyboard navigation (arrows/Home/End/PageUp/PageDown) -
+   * exactly one cell is in the Tab order at a time (besides always-tabbable editable cells). */
+  private readonly activeCell = signal<{ rowIndex: number; colIndex: number }>({ rowIndex: 0, colIndex: 0 });
   /** User-dragged column order, as a list of column keys; `null` uses `columnDefs`' natural order. */
   private readonly columnOrder = signal<string[] | null>(null);
   /** User-dragged column widths (px), keyed by column key; overrides `col.width` when present. */
@@ -321,11 +324,67 @@ export class DataGrid<TData = unknown> implements OnInit {
   }
 
   protected onCellKeydown(row: TData, index: number, col: ResolvedColumn<TData>, event: KeyboardEvent): void {
-    if (!this.isEditable(col, row) || this.isEditing(row, index, col)) return;
-    if (event.key !== 'Enter' && event.key !== 'F2') return;
+    if (this.isEditing(row, index, col)) return;
+    if (this.isEditable(col, row) && (event.key === 'Enter' || event.key === 'F2')) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.startEdit(row, index, col);
+      return;
+    }
+    this.navigateFromCell(event);
+  }
+
+  /** Marks a cell as the roving-tabindex active cell whenever it receives DOM focus (via mouse
+   * click, Tab, or a programmatic `.focus()` from `navigateFromCell`). */
+  protected onCellFocus(rowIndex: number, colIndex: number): void {
+    this.activeCell.set({ rowIndex, colIndex });
+  }
+
+  protected isActiveCell(rowIndex: number, colIndex: number): boolean {
+    const active = this.activeCell();
+    return active.rowIndex === rowIndex && active.colIndex === colIndex;
+  }
+
+  /** Arrow/Home/End/PageUp/PageDown navigation between gridcells, via plain DOM sibling
+   * traversal from the currently-focused cell (robust against CDK virtual-scroll DOM node
+   * recycling, since it always reads the live DOM rather than trusting stale row indices). */
+  private navigateFromCell(event: KeyboardEvent): void {
+    const cell = event.currentTarget as HTMLElement;
+    const rowEl = cell.parentElement;
+    if (!rowEl) return;
+
+    let target: Element | null | undefined;
+    switch (event.key) {
+      case 'ArrowRight':
+        target = cell.nextElementSibling;
+        break;
+      case 'ArrowLeft':
+        target = cell.previousElementSibling;
+        break;
+      case 'Home':
+        target = rowEl.firstElementChild;
+        break;
+      case 'End':
+        target = rowEl.lastElementChild;
+        break;
+      case 'ArrowDown':
+        target = cellAtRowOffset(cell, rowEl, 1);
+        break;
+      case 'ArrowUp':
+        target = cellAtRowOffset(cell, rowEl, -1);
+        break;
+      case 'PageDown':
+        target = cellAtRowOffset(cell, rowEl, 10);
+        break;
+      case 'PageUp':
+        target = cellAtRowOffset(cell, rowEl, -10);
+        break;
+      default:
+        return;
+    }
+    if (!(target instanceof HTMLElement)) return;
     event.preventDefault();
-    event.stopPropagation();
-    this.startEdit(row, index, col);
+    target.focus();
   }
 
   private startEdit(row: TData, index: number, col: ResolvedColumn<TData>): void {
@@ -527,6 +586,22 @@ export class DataGrid<TData = unknown> implements OnInit {
     next.splice(to, 0, sourceKey);
     this.columnOrder.set(next);
   }
+}
+
+/** Walks `Math.abs(deltaRows)` rows up/down from `cell`'s row, returning the cell at the same
+ * column position in the target row (or the furthest reachable row if fewer rows remain). */
+function cellAtRowOffset(cell: Element, rowEl: Element, deltaRows: number): Element | null {
+  const cellIndex = Array.from(rowEl.children).indexOf(cell);
+  const direction = deltaRows > 0 ? 1 : -1;
+  let currentRow: Element | null = rowEl;
+  let result: Element | null = null;
+  for (let i = 0; i < Math.abs(deltaRows); i++) {
+    const nextRow: Element | null = direction > 0 ? currentRow.nextElementSibling : currentRow.previousElementSibling;
+    if (!nextRow) break;
+    currentRow = nextRow;
+    result = currentRow.children[cellIndex] ?? null;
+  }
+  return result;
 }
 
 function nextSortState(current: SortEntry[], key: string, multi: boolean): SortEntry[] {

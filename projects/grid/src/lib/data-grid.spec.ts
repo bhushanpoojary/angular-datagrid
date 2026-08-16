@@ -826,6 +826,92 @@ describe('DataGrid', () => {
       );
     });
   });
+
+  describe('keyboard navigation', () => {
+    const threeRows: Row[] = [
+      { id: 1, name: 'Charlie', score: 70 },
+      { id: 2, name: 'Alpha', score: 90 },
+      { id: 3, name: 'Bravo', score: 80 },
+    ];
+
+    // Pagination (non-virtualized) mode avoids the jsdom + CDK viewport clientHeight quirk and
+    // gives every row a stable, always-rendered DOM node to navigate between.
+    function bodyRows(): HTMLElement[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-body--paged .gd-row'),
+      );
+    }
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('pagination', true);
+    });
+
+    it('starts with the top-left cell as the only tabbable cell (roving tabindex)', async () => {
+      await setInputs(threeRows, columnDefs);
+      const rows = bodyRows();
+      expect(rows[0].querySelectorAll('.gd-cell')[0].getAttribute('tabindex')).toBe('0');
+      expect(rows[0].querySelectorAll('.gd-cell')[1].getAttribute('tabindex')).toBe('-1');
+      expect(rows[1].querySelectorAll('.gd-cell')[0].getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('ArrowRight/ArrowLeft move focus between cells in the same row', async () => {
+      await setInputs(threeRows, columnDefs);
+      const cell0 = bodyRows()[0].querySelectorAll<HTMLElement>('.gd-cell')[0];
+      cell0.focus();
+      cell0.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      expect(document.activeElement).toBe(bodyRows()[0].querySelectorAll('.gd-cell')[1]);
+
+      (document.activeElement as HTMLElement).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }),
+      );
+      expect(document.activeElement).toBe(bodyRows()[0].querySelectorAll('.gd-cell')[0]);
+    });
+
+    it('ArrowDown/ArrowUp move focus between rows in the same column', async () => {
+      await setInputs(threeRows, columnDefs);
+      const cell = bodyRows()[0].querySelectorAll<HTMLElement>('.gd-cell')[1];
+      cell.focus();
+      cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(document.activeElement).toBe(bodyRows()[1].querySelectorAll('.gd-cell')[1]);
+
+      (document.activeElement as HTMLElement).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }),
+      );
+      expect(document.activeElement).toBe(bodyRows()[0].querySelectorAll('.gd-cell')[1]);
+    });
+
+    it('Home/End move focus to the first/last cell in the current row', async () => {
+      await setInputs(threeRows, columnDefs);
+      const middleCell = bodyRows()[1].querySelectorAll<HTMLElement>('.gd-cell')[1];
+      middleCell.focus();
+      middleCell.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      const lastCellIndex = columnDefs.length - 1;
+      expect(document.activeElement).toBe(bodyRows()[1].querySelectorAll('.gd-cell')[lastCellIndex]);
+
+      (document.activeElement as HTMLElement).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Home', bubbles: true }),
+      );
+      expect(document.activeElement).toBe(bodyRows()[1].querySelectorAll('.gd-cell')[0]);
+    });
+
+    it('focusing a cell (e.g. via click) updates the roving tabindex', async () => {
+      await setInputs(threeRows, columnDefs);
+      const target = bodyRows()[2].querySelectorAll<HTMLElement>('.gd-cell')[2];
+      target.dispatchEvent(new FocusEvent('focus', { bubbles: false }));
+      fixture.detectChanges();
+
+      expect(target.getAttribute('tabindex')).toBe('0');
+      expect(bodyRows()[0].querySelectorAll('.gd-cell')[0].getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('does nothing (and does not throw) when moving past the last row with ArrowDown', async () => {
+      await setInputs(threeRows, columnDefs);
+      const lastCell = bodyRows()[2].querySelectorAll<HTMLElement>('.gd-cell')[0];
+      lastCell.focus();
+      lastCell.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(document.activeElement).toBe(lastCell); // focus stays put, no error thrown
+    });
+  });
 });
 
 describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {
