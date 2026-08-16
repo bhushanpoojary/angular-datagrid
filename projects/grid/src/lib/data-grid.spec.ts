@@ -716,4 +716,49 @@ describe('DataGrid', () => {
       expect(order).toEqual(['Name', 'ID', 'Score']);
     });
   });
+
+  describe('cell/row styling', () => {
+    function bodyRowDivs(): HTMLElement[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.gd-viewport .gd-row, .gd-body--paged .gd-row',
+        ),
+      );
+    }
+
+    it('applies a class from cellClassRules only when its predicate matches', async () => {
+      const highScore: ColDef<Row> = {
+        field: 'score',
+        headerName: 'Score',
+        cellClassRules: { 'gd-high-score': ({ value }) => (value as number) >= 90 },
+      };
+      await setInputs(rowData, [columnDefs[0], columnDefs[1], highScore]);
+      const cells = bodyRowDivs().map((row) => row.querySelectorAll('.gd-cell')[2]);
+      expect(cells[0].classList).toContain('gd-high-score'); // Ada: 91
+      expect(cells[1].classList).not.toContain('gd-high-score'); // Grace: 88
+    });
+
+    it('applies a row class from rowClassRules only when its predicate matches', async () => {
+      fixture.componentRef.setInput('rowClassRules', { 'gd-inactive-row': (row: Row) => row.active === false });
+      await setInputs(
+        [
+          { id: 1, name: 'Ada', score: 91, active: true },
+          { id: 2, name: 'Grace', score: 88, active: false },
+        ],
+        columnDefs,
+      );
+      const rows = bodyRowDivs();
+      expect(rows[0].classList).not.toContain('gd-inactive-row');
+      expect(rows[1].classList).toContain('gd-inactive-row');
+    });
+
+    it('uses getRowHeight per-row in paginated (non-virtualized) mode', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      fixture.componentRef.setInput('getRowHeight', (row: Row) => (row.id === 2 ? 60 : 36));
+      await setInputs(rowData, columnDefs);
+      const rows = bodyRowDivs();
+      expect(rows[0].style.height).toBe('36px');
+      expect(rows[1].style.height).toBe('60px');
+    });
+  });
 });

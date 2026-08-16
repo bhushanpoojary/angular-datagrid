@@ -30,6 +30,8 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   /** Allows the user to drag-resize this column's width from its header. Defaults to `true`. */
   resizable?: boolean;
   cellClass?: string | string[];
+  /** Conditionally-applied classes; each function receives the resolved cell value + full row. */
+  cellClassRules?: Record<string, (params: { value: TValue; data: TData }) => boolean>;
   valueGetter?: (data: TData) => TValue;
   valueFormatter?: (value: TValue) => string;
 }

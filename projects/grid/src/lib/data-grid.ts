@@ -70,6 +70,12 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly rowSelection = input<'none' | 'single' | 'multiple'>('none');
   /** Starts inline editing on a single click instead of the default double-click. */
   readonly singleClickEdit = input<boolean>(false);
+  /** Conditionally-applied row classes; each function receives the row object. */
+  readonly rowClassRules = input<Record<string, (row: TData) => boolean> | undefined>(undefined);
+  /** Per-row height override; falls back to `rowHeight()` when omitted. Only honored in
+   * non-virtualized (paginated) mode - the virtual-scroll viewport requires a single fixed
+   * `itemSize` for its fixed-size strategy, so virtualized rows always use `rowHeight()`. */
+  readonly getRowHeight = input<((row: TData, index: number) => number) | undefined>(undefined);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
@@ -382,6 +388,32 @@ export class DataGrid<TData = unknown> implements OnInit {
     const value = this.cellValue(row, col);
     if (col.valueFormatter) return col.valueFormatter(value);
     return value == null ? '' : String(value);
+  }
+
+  /** Merges a column's static `cellClass` with any `cellClassRules` that evaluate truthy for this row. */
+  protected cellClasses(col: ResolvedColumn<TData>, row: TData): string[] {
+    const classes: string[] = ([] as string[]).concat(col.def.cellClass ?? []);
+    const rules = col.def.cellClassRules;
+    if (!rules) return classes;
+    const value = this.cellValue(row, col.def);
+    for (const [className, predicate] of Object.entries(rules)) {
+      if (predicate({ value, data: row })) classes.push(className);
+    }
+    return classes;
+  }
+
+  /** Evaluates `rowClassRules` (if provided) for a row, returning the matching class names. */
+  protected rowClasses(row: TData): string[] {
+    const rules = this.rowClassRules();
+    if (!rules) return [];
+    return Object.entries(rules)
+      .filter(([, predicate]) => predicate(row))
+      .map(([className]) => className);
+  }
+
+  /** Row height for paginated (non-virtualized) rows - honors `getRowHeight()` when provided. */
+  protected resolvedRowHeight(row: TData, index: number): number {
+    return this.getRowHeight()?.(row, index) ?? this.rowHeight();
   }
 
   protected columnFilterValue(col: ResolvedColumn<TData>): string {

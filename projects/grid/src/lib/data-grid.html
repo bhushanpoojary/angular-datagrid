@@ -83,8 +83,9 @@
         <div
           class="gd-row"
           role="row"
+          [ngClass]="rowClasses(row)"
           [class.gd-row--selected]="isSelected(row, rowIndex)"
-          [style.height.px]="rowHeight()"
+          [style.height.px]="resolvedRowHeight(row, rowIndex)"
           [attr.aria-rowindex]="rowIndex + 2"
           [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(row, rowIndex) : null"
           [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
@@ -95,7 +96,7 @@
             <div
               class="gd-cell"
               role="gridcell"
-              [ngClass]="col.def.cellClass"
+              [ngClass]="cellClasses(col, row)"
               [style]="col.style"
               [class.gd-cell--editable]="isEditable(col, row)"
               [class.gd-cell--pinned]="col.pinned"
@@ -120,6 +121,7 @@
       <div
         class="gd-row"
         role="row"
+        [ngClass]="rowClasses(row)"
         [class.gd-row--selected]="isSelected(row, rowIndex)"
         [style.height.px]="rowHeight()"
         [attr.aria-rowindex]="rowIndex + 2"
@@ -133,7 +135,7 @@
           <div
             class="gd-cell"
             role="gridcell"
-            [ngClass]="col.def.cellClass"
+            [ngClass]="cellClasses(col, row)"
             [style]="col.style"
             [class.gd-cell--editable]="isEditable(col, row)"
             [class.gd-cell--pinned]="col.pinned"
