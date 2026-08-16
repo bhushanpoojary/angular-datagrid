@@ -1,6 +1,8 @@
 .gd-root {
   display: flex;
   flex-direction: column;
+  /* Single shared horizontal scrollbar for header + filter row + body - see contentMinWidth(). */
+  overflow-x: auto;
   border: 1px solid var(--gd-border-color, #d0d0d0);
   font-family: var(--gd-font-family, sans-serif);
   font-size: var(--gd-font-size, 14px);
@@ -38,6 +40,8 @@
 
 .gd-viewport {
   width: 100%;
+  /* horizontal scroll is owned by .gd-root so header/filter/body move together */
+  overflow-x: hidden;
 }
 
 .gd-viewport .gd-row {
@@ -46,6 +50,7 @@
 }
 
 .gd-cell {
+  box-sizing: border-box;
   padding: 6px 8px;
   overflow: hidden;
   text-overflow: ellipsis;

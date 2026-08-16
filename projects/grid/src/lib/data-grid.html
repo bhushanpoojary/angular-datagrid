@@ -4,7 +4,7 @@
   [attr.aria-rowcount]="sortedRows().length + 1"
   [attr.aria-colcount]="columns().length"
 >
-  <div class="gd-row gd-row--header" role="row">
+  <div class="gd-row gd-row--header" role="row" [style.min-width]="contentMinWidth()">
     @for (col of columns(); track col.key) {
       <div
         class="gd-cell gd-cell--header"
@@ -31,7 +31,7 @@
   </div>
 
   @if (hasColumnFilters()) {
-    <div class="gd-row gd-row--filter" role="row">
+    <div class="gd-row gd-row--filter" role="row" [style.min-width]="contentMinWidth()">
       @for (col of columns(); track col.key) {
         <div class="gd-cell gd-cell--filter" role="gridcell" [style]="col.style">
           @if (col.def.filter) {
@@ -54,7 +54,12 @@
       <div class="gd-cell" role="gridcell">No rows to display</div>
     </div>
   } @else {
-    <cdk-virtual-scroll-viewport [itemSize]="rowHeight()" [style.height]="height()" class="gd-viewport">
+    <cdk-virtual-scroll-viewport
+      [itemSize]="rowHeight()"
+      [style.height]="height()"
+      [style.min-width]="contentMinWidth()"
+      class="gd-viewport"
+    >
       <div
         class="gd-row"
         role="row"

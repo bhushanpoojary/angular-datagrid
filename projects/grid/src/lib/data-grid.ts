@@ -57,6 +57,14 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   protected readonly hasColumnFilters = computed(() => this.columns().some((col) => !!col.def.filter));
 
+  /** Minimum total width of all columns - lets the grid provide its own horizontal scrollbar
+   * (via CSS `min-width` + `.gd-root { overflow-x: auto }`) instead of columns being silently
+   * clipped/pushed off-screen when the container is narrower than the content. */
+  protected readonly contentMinWidth = computed<string>(() => {
+    const total = this.columns().reduce((sum, col) => sum + (col.def.width ?? col.def.minWidth ?? 120), 0);
+    return `${total}px`;
+  });
+
   protected readonly filteredRows = computed<readonly TData[]>(() => {
     const cols = this.columns();
     const filters = this.columnFilters();
