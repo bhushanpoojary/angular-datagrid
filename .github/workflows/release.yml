@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 # Prevent overlapping releases racing to bump/push the version
 concurrency:
@@ -12,7 +13,7 @@ concurrency:
 jobs:
   release:
     # Skip the run this workflow's own version-bump commit produces
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: "github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     permissions:
       contents: write # push version bump commit/tag + create the GitHub Release
