@@ -761,4 +761,22 @@ describe('DataGrid', () => {
       expect(rows[1].style.height).toBe('60px');
     });
   });
+
+  describe('themes & density', () => {
+    it('defaults to the light theme and normal density (no data attributes forced beyond the input defaults)', async () => {
+      await setInputs(rowData, columnDefs);
+      const root = (fixture.nativeElement as HTMLElement).querySelector('.gd-root')!;
+      expect(root.getAttribute('data-gd-theme')).toBe('light');
+      expect(root.getAttribute('data-gd-density')).toBe('normal');
+    });
+
+    it('reflects the theme and density inputs as data attributes', async () => {
+      fixture.componentRef.setInput('theme', 'dark');
+      fixture.componentRef.setInput('density', 'compact');
+      await setInputs(rowData, columnDefs);
+      const root = (fixture.nativeElement as HTMLElement).querySelector('.gd-root')!;
+      expect(root.getAttribute('data-gd-theme')).toBe('dark');
+      expect(root.getAttribute('data-gd-density')).toBe('compact');
+    });
+  });
 });

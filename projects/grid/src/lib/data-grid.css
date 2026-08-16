@@ -38,6 +38,43 @@
   font-family: inherit;
 }
 
+/* --- Density presets: control cell padding via the same --gd-cell-padding-* vars the rest of
+   the sheet already reads. 'normal' matches the hardcoded historical defaults, so it needs no
+   override. --- */
+.gd-root[data-gd-density='compact'] {
+  --gd-cell-padding-y: 2px;
+  --gd-cell-padding-x: 6px;
+}
+
+.gd-root[data-gd-density='comfortable'] {
+  --gd-cell-padding-y: 10px;
+  --gd-cell-padding-x: 12px;
+}
+
+/* --- Built-in themes: override the CSS custom properties every rule in this sheet already reads
+   as its fallback value. 'light' is the implicit default (matches the hardcoded fallbacks), so
+   it needs no override block. Consumers can layer their own overrides on top of any theme by
+   setting the same --gd-* variables on an ancestor element. --- */
+.gd-root[data-gd-theme='dark'] {
+  --gd-background: #1e1e1e;
+  --gd-header-background: #2a2a2a;
+  --gd-border-color: #3d3d3d;
+  --gd-text-color: #e5e5e5;
+  --gd-muted-color: #9ca3af;
+  --gd-selected-background: #1e3a5f;
+  --gd-accent-color: #60a5fa;
+}
+
+.gd-root[data-gd-theme='high-contrast'] {
+  --gd-background: #000;
+  --gd-header-background: #000;
+  --gd-border-color: #fff;
+  --gd-text-color: #fff;
+  --gd-muted-color: #fff;
+  --gd-selected-background: #ffff00;
+  --gd-accent-color: #ffff00;
+}
+
 .gd-viewport {
   width: 100%;
   /* horizontal scroll is owned by .gd-root so header/filter/body move together */
@@ -51,7 +88,7 @@
 
 .gd-cell {
   box-sizing: border-box;
-  padding: 6px 8px;
+  padding: var(--gd-cell-padding-y, 6px) var(--gd-cell-padding-x, 8px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

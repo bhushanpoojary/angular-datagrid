@@ -1,6 +1,8 @@
 <div
   class="gd-root"
   role="grid"
+  [attr.data-gd-theme]="theme()"
+  [attr.data-gd-density]="density()"
   [attr.aria-rowcount]="sortedRows().length + 1"
   [attr.aria-colcount]="columns().length"
 >

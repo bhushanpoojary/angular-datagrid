@@ -72,6 +72,11 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly singleClickEdit = input<boolean>(false);
   /** Conditionally-applied row classes; each function receives the row object. */
   readonly rowClassRules = input<Record<string, (row: TData) => boolean> | undefined>(undefined);
+  /** Built-in visual theme; sets CSS custom properties for colors. `'light'` (default) uses the
+   * grid's own hardcoded fallback colors, so it never needs its own overrides. */
+  readonly theme = input<'light' | 'dark' | 'high-contrast'>('light');
+  /** Controls cell padding (and thus visual row compactness) via CSS custom properties. */
+  readonly density = input<'compact' | 'normal' | 'comfortable'>('normal');
   /** Per-row height override; falls back to `rowHeight()` when omitted. Only honored in
    * non-virtualized (paginated) mode - the virtual-scroll viewport requires a single fixed
    * `itemSize` for its fixed-size strategy, so virtualized rows always use `rowHeight()`. */
