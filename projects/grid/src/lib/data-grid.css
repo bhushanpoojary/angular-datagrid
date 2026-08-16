@@ -1,0 +1,4 @@
+.gd-root {
+  display: block;
+  font-family: var(--gd-font-family, sans-serif);
+}

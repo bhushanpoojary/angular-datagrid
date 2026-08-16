@@ -1,0 +1,44 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm",
+    "schematicCollections": ["angular-eslint"]
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "grid": {
+      "projectType": "library",
+      "root": "projects/grid",
+      "sourceRoot": "projects/grid/src",
+      "prefix": "gd",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/grid/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/grid/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/grid/tsconfig.spec.json"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["projects/grid/**/*.ts", "projects/grid/**/*.html"],
+            "eslintConfig": "projects/grid/eslint.config.js"
+          }
+        }
+      }
+    }
+  }
+}
