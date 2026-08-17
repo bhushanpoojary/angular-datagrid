@@ -988,6 +988,85 @@ describe('DataGrid', () => {
       expect(csvText).toContain('Ada');
     });
   });
+
+  describe('row grouping & aggregation', () => {
+    const teamRows: Row[] = [
+      { id: 1, name: 'Ada', score: 91, team: 'Blue' },
+      { id: 2, name: 'Grace', score: 88, team: 'Blue' },
+      { id: 3, name: 'Alan', score: 70, team: 'Red' },
+    ];
+
+    const groupedColumnDefs: ColDef<Row>[] = [
+      { field: 'id', headerName: 'ID' },
+      { field: 'name', headerName: 'Name' },
+      { field: 'team', headerName: 'Team', rowGroup: true },
+      { field: 'score', headerName: 'Score', aggFunc: 'sum' },
+    ];
+
+    function groupRowEls(): HTMLElement[] {
+      return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-row--group'));
+    }
+
+    function leafRowEls(): HTMLElement[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-body--paged .gd-row:not(.gd-row--group)'),
+      );
+    }
+
+    it('renders a group header row per distinct value of a rowGroup column', async () => {
+      await setInputs(teamRows, groupedColumnDefs);
+      const groups = groupRowEls();
+      expect(groups).toHaveLength(2);
+      expect(groups[0].textContent).toContain('Team: Blue');
+      expect(groups[0].textContent).toContain('(2)');
+      expect(groups[1].textContent).toContain('Team: Red');
+      expect(groups[1].textContent).toContain('(1)');
+    });
+
+    it('shows all leaf rows under their groups when expanded by default', async () => {
+      await setInputs(teamRows, groupedColumnDefs);
+      expect(leafRowEls()).toHaveLength(3);
+    });
+
+    it('shows an aggFunc sum in the group header row', async () => {
+      await setInputs(teamRows, groupedColumnDefs);
+      const groups = groupRowEls();
+      expect(groups[0].textContent).toContain('Score: 179'); // 91 + 88
+      expect(groups[1].textContent).toContain('Score: 70');
+    });
+
+    it('collapses a group on click, hiding its leaf rows, and re-expands on a second click', async () => {
+      await setInputs(teamRows, groupedColumnDefs);
+      groupRowEls()[0].click();
+      fixture.detectChanges();
+      expect(leafRowEls()).toHaveLength(1); // only Red's leaf row remains
+      expect(groupRowEls()).toHaveLength(2); // both group headers still shown
+
+      groupRowEls()[0].click();
+      fixture.detectChanges();
+      expect(leafRowEls()).toHaveLength(3);
+    });
+
+    it('supports nested grouping across two rowGroup columns', async () => {
+      const nestedRows: Row[] = [
+        { id: 1, name: 'Ada', score: 91, team: 'Blue', active: true },
+        { id: 2, name: 'Grace', score: 88, team: 'Blue', active: false },
+      ];
+      await setInputs(nestedRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'team', headerName: 'Team', rowGroup: true, rowGroupIndex: 0 },
+        { field: 'active', headerName: 'Active', rowGroup: true, rowGroupIndex: 1 },
+        { field: 'name', headerName: 'Name' },
+      ]);
+      expect(groupRowEls()).toHaveLength(3); // Team:Blue, then Active:true and Active:false nested inside
+      expect(leafRowEls()).toHaveLength(2);
+    });
+
+    it('renders no group rows and behaves exactly as before when no column declares rowGroup', async () => {
+      await setInputs(teamRows, columnDefs);
+      expect(groupRowEls()).toHaveLength(0);
+    });
+  });
 });
 
 describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {

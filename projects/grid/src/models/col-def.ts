@@ -44,4 +44,12 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   /** Shows a native browser tooltip (the `title` attribute) on hover; `true` uses the cell's
    * displayed value, or supply a function for custom tooltip text. */
   tooltip?: boolean | ((row: TData) => string);
+  /** Groups rows by this column's value, rendering a collapsible group-header row per distinct
+   * value instead of individual rows for it. When multiple columns declare `rowGroup: true`,
+   * `rowGroupIndex` controls nesting order (lower = outer group); grouping happens after sorting. */
+  rowGroup?: boolean;
+  rowGroupIndex?: number;
+  /** Shows an aggregated value (over the resolved cell value) in each group-header row for this
+   * column. Requires at least one other column to declare `rowGroup: true`. */
+  aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
 }

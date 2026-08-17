@@ -84,41 +84,69 @@
         <div class="gd-cell" role="gridcell">No rows to display</div>
       }
     </div>
-  } @else if (pagination()) {
+  } @else if (pagination() || hasRowGrouping()) {
     <div class="gd-body gd-body--paged" [style.min-width]="contentMinWidth()">
-      @for (row of pagedRows(); track trackRow($index, row); let rowIndex = $index) {
-        <div
-          class="gd-row"
-          role="row"
-          [ngClass]="rowClasses(row)"
-          [class.gd-row--selected]="isSelected(row, rowIndex)"
-          [style.height.px]="resolvedRowHeight(row, rowIndex)"
-          [attr.aria-rowindex]="rowIndex + 2"
-          [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(row, rowIndex) : null"
-          [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
-          (click)="onRowClick(row, rowIndex, $event)"
-          (keydown)="onRowKeydown(row, rowIndex, $event)"
-        >
-          @for (col of columns(); track col.key; let colIndex = $index) {
-            <div
-              class="gd-cell"
-              role="gridcell"
-              [ngClass]="cellClasses(col, row)"
-              [style]="col.style"
-              [class.gd-cell--editable]="isEditable(col, row)"
-              [class.gd-cell--pinned]="col.pinned"
-              [attr.tabindex]="isEditable(col, row) ? 0 : (isActiveCell(rowIndex, colIndex) ? 0 : -1)"
-              [attr.aria-colindex]="colIndex + 1"
-              [attr.title]="cellTooltip(col, row)"
-              (click)="onCellClick(row, rowIndex, col, $event)"
-              (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
-              (keydown)="onCellKeydown(row, rowIndex, col, $event)"
-              (focus)="onCellFocus(rowIndex, colIndex)"
-            >
-              <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
+      @for (item of pagedDisplayItems(); track itemTrackKey(item)) {
+        @if (item.kind === 'group') {
+          <div
+            class="gd-row gd-row--group"
+            role="row"
+            tabindex="0"
+            [style.height.px]="rowHeight()"
+            (click)="toggleGroup(item.group.key)"
+            (keydown.enter)="toggleGroup(item.group.key)"
+            (keydown.space)="$event.preventDefault(); toggleGroup(item.group.key)"
+          >
+            <div class="gd-cell gd-group-cell" role="gridcell" [style.padding-left.px]="item.group.level * 20 + 8">
+              <button type="button" class="gd-group-toggle" (click)="toggleGroup(item.group.key); $event.stopPropagation()">
+                {{ isGroupCollapsed(item.group.key) ? '▶' : '▼' }}
+              </button>
+              <span class="gd-group-label">
+                {{ groupColumns()[item.group.level].def.headerName ?? groupColumns()[item.group.level].def.field }}:
+                {{ item.group.value }}
+              </span>
+              <span class="gd-group-count">({{ item.group.count }})</span>
+              @for (aggCol of aggregateColumns(); track aggCol.key) {
+                <span class="gd-group-agg">
+                  {{ aggCol.def.headerName ?? aggCol.def.field }}: {{ formatAggregateValue(item.group.aggregates[aggCol.key]) }}
+                </span>
+              }
             </div>
-          }
-        </div>
+          </div>
+        } @else {
+          <div
+            class="gd-row"
+            role="row"
+            [ngClass]="rowClasses(item.row)"
+            [class.gd-row--selected]="isSelected(item.row, item.rowIndex)"
+            [style.height.px]="resolvedRowHeight(item.row, item.rowIndex)"
+            [attr.aria-rowindex]="item.rowIndex + 2"
+            [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(item.row, item.rowIndex) : null"
+            [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
+            (click)="onRowClick(item.row, item.rowIndex, $event)"
+            (keydown)="onRowKeydown(item.row, item.rowIndex, $event)"
+          >
+            @for (col of columns(); track col.key; let colIndex = $index) {
+              <div
+                class="gd-cell"
+                role="gridcell"
+                [ngClass]="cellClasses(col, item.row)"
+                [style]="col.style"
+                [class.gd-cell--editable]="isEditable(col, item.row)"
+                [class.gd-cell--pinned]="col.pinned"
+                [attr.tabindex]="isEditable(col, item.row) ? 0 : (isActiveCell(item.rowIndex, colIndex) ? 0 : -1)"
+                [attr.aria-colindex]="colIndex + 1"
+                [attr.title]="cellTooltip(col, item.row)"
+                (click)="onCellClick(item.row, item.rowIndex, col, $event)"
+                (dblclick)="onCellDblClick(item.row, item.rowIndex, col, $event)"
+                (keydown)="onCellKeydown(item.row, item.rowIndex, col, $event)"
+                (focus)="onCellFocus(item.rowIndex, colIndex)"
+              >
+                <ng-container *ngTemplateOutlet="cellContent; context: { row: item.row, col, rowIndex: item.rowIndex }" />
+              </div>
+            }
+          </div>
+        }
       }
     </div>
   } @else {

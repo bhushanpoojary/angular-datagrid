@@ -42,6 +42,17 @@ interface SortEntry {
   direction: 'asc' | 'desc';
 }
 
+interface GroupRow {
+  key: string;
+  level: number;
+  field: string;
+  value: unknown;
+  count: number;
+  aggregates: Record<string, unknown>;
+}
+
+type DisplayItem<TData> = { kind: 'group'; group: GroupRow } | { kind: 'row'; row: TData; rowIndex: number };
+
 @Component({
   selector: 'gd-data-grid',
   imports: [NgClass, NgTemplateOutlet, ScrollingModule, AutoFocusDirective],
@@ -101,6 +112,8 @@ export class DataGrid<TData = unknown> implements OnInit {
   /** Roving-tabindex active cell for keyboard navigation (arrows/Home/End/PageUp/PageDown) -
    * exactly one cell is in the Tab order at a time (besides always-tabbable editable cells). */
   private readonly activeCell = signal<{ rowIndex: number; colIndex: number }>({ rowIndex: 0, colIndex: 0 });
+  /** Row-group keys the user has collapsed; a key not in this set is expanded (default expanded). */
+  private readonly collapsedGroups = signal<ReadonlySet<string>>(new Set());
   /** User-dragged column order, as a list of column keys; `null` uses `columnDefs`' natural order. */
   private readonly columnOrder = signal<string[] | null>(null);
   /** User-dragged column widths (px), keyed by column key; overrides `col.width` when present. */
@@ -192,9 +205,10 @@ export class DataGrid<TData = unknown> implements OnInit {
     });
   });
 
-  protected readonly pageCount = computed(() =>
-    this.pagination() ? Math.max(1, Math.ceil(this.sortedRows().length / this.pageSize())) : 1,
-  );
+  protected readonly pageCount = computed(() => {
+    if (!this.pagination()) return 1;
+    return Math.max(1, Math.ceil(this.displayRows().length / this.pageSize()));
+  });
 
   /** Clamped so filtering/sorting/pageSize changes never leave the page pointing past the end. */
   protected readonly safeCurrentPage = computed(() => Math.min(this.currentPage(), this.pageCount() - 1));
@@ -205,10 +219,90 @@ export class DataGrid<TData = unknown> implements OnInit {
     return this.sortedRows().slice(start, start + this.pageSize());
   });
 
-  /** The currently rendered rows (post filter/sort/page) - what select-all should act on. */
-  private readonly visibleRows = computed<readonly TData[]>(() =>
-    this.pagination() ? this.pagedRows() : this.sortedRows(),
+  /** Columns marked `rowGroup: true`, ordered by `rowGroupIndex` (outermost group first). */
+  protected readonly groupColumns = computed(() =>
+    this.columns()
+      .filter((col) => col.def.rowGroup)
+      .sort((colA, colB) => (colA.def.rowGroupIndex ?? 0) - (colB.def.rowGroupIndex ?? 0)),
   );
+
+  protected readonly hasRowGrouping = computed(() => this.groupColumns().length > 0);
+
+  protected readonly aggregateColumns = computed(() => this.columns().filter((col) => !!col.def.aggFunc));
+
+  /** Flattened render list: every row when there's no grouping (1:1 with `sortedRows()`), or a
+   * mix of group-header rows and leaf rows when one or more columns declare `rowGroup: true`.
+   * Groups are a stable partition of `sortedRows()` (grouping happens AFTER sort), so sorting
+   * still determines order both across and within groups. Collapsed groups (see
+   * `collapsedGroups`) omit their descendants from the result entirely. */
+  protected readonly displayRows = computed<DisplayItem<TData>[]>(() => {
+    const rows = this.sortedRows();
+    const groupCols = this.groupColumns();
+    if (groupCols.length === 0) {
+      return rows.map((row, rowIndex): DisplayItem<TData> => ({ kind: 'row', row, rowIndex }));
+    }
+
+    // Preserves the same row identity (index into `sortedRows()`) used everywhere else (getRowId,
+    // selection, editing) even though grouping reorders rows into their group's bucket.
+    const originalIndex = new Map<TData, number>(rows.map((row, index) => [row, index]));
+    const aggCols = this.aggregateColumns();
+    const collapsed = this.collapsedGroups();
+    const result: DisplayItem<TData>[] = [];
+
+    const buildLevel = (data: readonly TData[], levelIndex: number, parentKey: string): void => {
+      if (levelIndex >= groupCols.length) {
+        for (const row of data) result.push({ kind: 'row', row, rowIndex: originalIndex.get(row)! });
+        return;
+      }
+      const col = groupCols[levelIndex];
+      const buckets = new Map<string, TData[]>();
+      for (const row of data) {
+        const bucketKey = String(this.cellValue(row, col.def));
+        const bucket = buckets.get(bucketKey);
+        if (bucket) bucket.push(row);
+        else buckets.set(bucketKey, [row]);
+      }
+      for (const [bucketKey, bucketRows] of buckets) {
+        const key = `${parentKey}/${col.key}=${bucketKey}`;
+        const aggregates: Record<string, unknown> = {};
+        for (const aggCol of aggCols) aggregates[aggCol.key] = this.computeAggregate(bucketRows, aggCol);
+        result.push({
+          kind: 'group',
+          group: {
+            key,
+            level: levelIndex,
+            field: col.key,
+            value: this.cellValue(bucketRows[0], col.def),
+            count: bucketRows.length,
+            aggregates,
+          },
+        });
+        if (!collapsed.has(key)) buildLevel(bucketRows, levelIndex + 1, key);
+      }
+    };
+    buildLevel(rows, 0, '');
+    return result;
+  });
+
+  /** `displayRows()`, paginated when `[pagination]` is enabled - used for the non-virtualized
+   * body, which handles both plain pagination and row grouping (grouping always uses this path;
+   * see the template for why it can't use the CDK virtual-scroll viewport). */
+  protected readonly pagedDisplayItems = computed<DisplayItem<TData>[]>(() => {
+    const items = this.displayRows();
+    if (!this.pagination()) return items;
+    const start = this.safeCurrentPage() * this.pageSize();
+    return items.slice(start, start + this.pageSize());
+  });
+
+  /** The currently rendered rows (post filter/sort/page/group) - what select-all should act on.
+   * Group header rows are never selectable, so only `kind: 'row'` items are included. */
+  private readonly visibleRows = computed<readonly TData[]>(() => {
+    if (this.hasRowGrouping()) {
+      const items = this.pagination() ? this.pagedDisplayItems() : this.displayRows();
+      return items.filter(isRowItem).map((item) => item.row);
+    }
+    return this.pagination() ? this.pagedRows() : this.sortedRows();
+  });
 
   protected readonly allVisibleSelected = computed(() => {
     const rows = this.visibleRows();
@@ -497,11 +591,57 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   /** e.g. "1-50 of 320" for the pager footer; "0 of 0" when there are no rows. */
   protected pageRangeText(): string {
-    const total = this.sortedRows().length;
+    const total = this.displayRows().length;
     if (total === 0) return '0 of 0';
     const start = this.safeCurrentPage() * this.pageSize() + 1;
     const end = Math.min(start + this.pageSize() - 1, total);
     return `${start}-${end} of ${total}`;
+  }
+
+  protected isGroupCollapsed(key: string): boolean {
+    return this.collapsedGroups().has(key);
+  }
+
+  protected toggleGroup(key: string): void {
+    this.collapsedGroups.update((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  /** Stable `@for` track key for a display item - a group's own key, or the leaf row's identity. */
+  protected itemTrackKey(item: DisplayItem<TData>): string | number {
+    return item.kind === 'group' ? item.group.key : this.rowId(item.row, item.rowIndex);
+  }
+
+  /** Formats an aggregate value for display; numbers are rounded to 2 decimal places (`avg`
+   * commonly produces long decimals; `sum`/`min`/`max`/`count` are already whole for most data). */
+  protected formatAggregateValue(value: unknown): string {
+    if (typeof value !== 'number') return String(value ?? '');
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  private computeAggregate(rows: readonly TData[], col: ResolvedColumn<TData>): unknown {
+    const fn = col.def.aggFunc;
+    if (!fn) return undefined;
+    if (fn === 'count') return rows.length;
+
+    const nums = rows.map((row) => Number(this.cellValue(row, col.def))).filter((num) => !Number.isNaN(num));
+    if (nums.length === 0) return fn === 'sum' ? 0 : undefined;
+    switch (fn) {
+      case 'sum':
+        return nums.reduce((sum, num) => sum + num, 0);
+      case 'avg':
+        return nums.reduce((sum, num) => sum + num, 0) / nums.length;
+      case 'min':
+        return Math.min(...nums);
+      case 'max':
+        return Math.max(...nums);
+      default:
+        return undefined;
+    }
   }
 
   protected cellValue(row: TData, col: ColDef<TData>): unknown {
@@ -646,6 +786,11 @@ export class DataGrid<TData = unknown> implements OnInit {
 
 /** Walks `Math.abs(deltaRows)` rows up/down from `cell`'s row, returning the cell at the same
  * column position in the target row (or the furthest reachable row if fewer rows remain). */
+/** Type guard narrowing a `DisplayItem` to its leaf-row variant (used to filter out group headers). */
+function isRowItem<TData>(item: DisplayItem<TData>): item is { kind: 'row'; row: TData; rowIndex: number } {
+  return item.kind === 'row';
+}
+
 function cellAtRowOffset(cell: Element, rowEl: Element, deltaRows: number): Element | null {
   const cellIndex = Array.from(rowEl.children).indexOf(cell);
   const direction = deltaRows > 0 ? 1 : -1;
