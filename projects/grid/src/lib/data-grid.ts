@@ -168,8 +168,13 @@ export class DataGrid<TData = unknown> implements OnInit {
   private readonly columnFilters = signal<Record<string, string>>({});
   /** Selected values per `filter: 'set'` column key; no entry means "all values" (no restriction). */
   private readonly setFilters = signal<Record<string, ReadonlySet<string>>>({});
-  /** Which column's set-filter facet panel is currently open, or `null` if none. */
-  private readonly openSetFilterKey = signal<string | null>(null);
+  /** Which column's set-filter facet panel is open, plus its fixed-position coordinates (derived
+   * from the toggle button's bounding rect - see `toggleSetFilterPanel`) - `null` when closed.
+   * Uses `position: fixed` rather than a `position: absolute` + `overflow: visible` override
+   * because `.gd-cell` (and, via the CSS overflow-x/y interaction, `.gd-root` itself) clips
+   * overflowing descendants; fixed positioning sidesteps that entirely, matching the same
+   * pattern already used for the right-click context menu. */
+  private readonly openSetFilterPanel = signal<{ colKey: string; x: number; y: number } | null>(null);
   private readonly currentPage = signal(0);
   private readonly selection = signal<ReadonlyMap<string | number, TData>>(new Map());
   private readonly editingCell = signal<{ rowKey: string | number; colKey: string } | null>(null);
@@ -315,12 +320,25 @@ export class DataGrid<TData = unknown> implements OnInit {
     });
   }
 
-  protected toggleSetFilterPanel(colKey: string): void {
-    this.openSetFilterKey.update((current) => (current === colKey ? null : colKey));
+  protected toggleSetFilterPanel(colKey: string, event: MouseEvent): void {
+    this.openSetFilterPanel.update((current) => {
+      if (current?.colKey === colKey) return null;
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      return { colKey, x: rect.left, y: rect.bottom };
+    });
   }
 
   protected isSetFilterPanelOpen(colKey: string): boolean {
-    return this.openSetFilterKey() === colKey;
+    return this.openSetFilterPanel()?.colKey === colKey;
+  }
+
+  protected setFilterPanelPosition(): { x: number; y: number } | null {
+    const panel = this.openSetFilterPanel();
+    return panel ? { x: panel.x, y: panel.y } : null;
+  }
+
+  protected closeSetFilterPanel(): void {
+    this.openSetFilterPanel.set(null);
   }
 
   protected readonly pinnedTopRows = computed<readonly TData[]>(() => {

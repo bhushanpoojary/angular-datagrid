@@ -39,10 +39,6 @@
   font-family: inherit;
 }
 
-.gd-set-filter {
-  position: relative;
-}
-
 .gd-set-filter-toggle {
   width: 100%;
   box-sizing: border-box;
@@ -62,10 +58,8 @@
 }
 
 .gd-set-filter-panel {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 10;
+  position: fixed;
+  z-index: 1000;
   background: var(--gd-background, #fff);
   border: 1px solid var(--gd-border-color, #d0d0d0);
   border-radius: 4px;
@@ -74,6 +68,12 @@
   min-width: 160px;
   max-height: 220px;
   overflow-y: auto;
+}
+
+.gd-set-filter-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
 }
 
 .gd-set-filter-option {

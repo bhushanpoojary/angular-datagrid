@@ -67,12 +67,18 @@
                 type="button"
                 class="gd-set-filter-toggle"
                 [class.gd-set-filter-toggle--active]="hasActiveSetFilter(col)"
-                (click)="toggleSetFilterPanel(col.key)"
+                (click)="toggleSetFilterPanel(col.key, $event)"
               >
                 Filter {{ hasActiveSetFilter(col) ? '●' : '▾' }}
               </button>
-              @if (isSetFilterPanelOpen(col.key)) {
-                <div class="gd-set-filter-panel">
+              @if (isSetFilterPanelOpen(col.key) && setFilterPanelPosition(); as pos) {
+                <div
+                  class="gd-set-filter-backdrop"
+                  tabindex="-1"
+                  (click)="closeSetFilterPanel()"
+                  (keydown.escape)="closeSetFilterPanel()"
+                ></div>
+                <div class="gd-set-filter-panel" [style.left.px]="pos.x" [style.top.px]="pos.y">
                   @for (facet of facetsFor(col); track facet.value) {
                     <label class="gd-set-filter-option">
                       <input

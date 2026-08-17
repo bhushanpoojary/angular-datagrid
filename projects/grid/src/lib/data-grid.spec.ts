@@ -345,6 +345,26 @@ describe('DataGrid', () => {
         expect(bodyText()).toEqual(['1', '2', '3']);
         expect((fixture.nativeElement as HTMLElement).querySelector('.gd-set-filter-toggle--active')).toBeNull();
       });
+
+      it('renders the panel with position:fixed and explicit coordinates (not clipped by ancestor overflow)', async () => {
+        await setInputs(teamRows, setFilterDefs);
+        openSetFilterPanel();
+        const panel = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.gd-set-filter-panel')!;
+        const computed = getComputedStyle(panel);
+        expect(computed.position).toBe('fixed');
+        expect(panel.style.left).not.toBe('');
+        expect(panel.style.top).not.toBe('');
+      });
+
+      it('closes the panel when clicking the backdrop', async () => {
+        await setInputs(teamRows, setFilterDefs);
+        openSetFilterPanel();
+        expect((fixture.nativeElement as HTMLElement).querySelector('.gd-set-filter-panel')).not.toBeNull();
+
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.gd-set-filter-backdrop')!.click();
+        fixture.detectChanges();
+        expect((fixture.nativeElement as HTMLElement).querySelector('.gd-set-filter-panel')).toBeNull();
+      });
     });
   });
 
