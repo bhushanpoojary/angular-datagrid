@@ -1067,6 +1067,70 @@ describe('DataGrid', () => {
       expect(groupRowEls()).toHaveLength(0);
     });
   });
+
+  describe('tree data', () => {
+    const roots: Row[] = [
+      { id: 1, name: 'Engineering', score: 0 },
+      { id: 2, name: 'Sales', score: 0 },
+    ];
+    const childrenById: Record<number, Row[]> = {
+      1: [
+        { id: 11, name: 'Ada', score: 91 },
+        { id: 12, name: 'Grace', score: 88 },
+      ],
+      2: [{ id: 21, name: 'Alan', score: 70 }],
+    };
+    const getChildRows = (row: Row): Row[] | undefined => childrenById[row.id];
+
+    function treeRowEls(): HTMLElement[] {
+      return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-body--paged .gd-row'));
+    }
+
+    async function setTreeInputs(): Promise<void> {
+      fixture.componentRef.setInput('getChildRows', getChildRows);
+      await setInputs(roots, columnDefs);
+    }
+
+    it('renders root rows and their children flattened, expanded by default', async () => {
+      await setTreeInputs();
+      expect(treeRowEls()).toHaveLength(5); // 2 roots + 2 + 1 children
+      const ids = treeRowEls().map((row) => row.querySelectorAll('.gd-cell')[0].textContent?.replace(/\s+/g, ' ').trim());
+      expect(ids).toEqual(['▼ 1', '11', '12', '▼ 2', '21']);
+    });
+
+    it('shows an expand/collapse toggle only for rows that have children', async () => {
+      await setTreeInputs();
+      const rows = treeRowEls();
+      expect(rows[0].querySelector('.gd-tree-toggle')).not.toBeNull(); // Engineering (has children)
+      expect(rows[1].querySelector('.gd-tree-toggle')).toBeNull(); // Ada (leaf)
+      expect(rows[1].querySelector('.gd-tree-spacer')).not.toBeNull();
+    });
+
+    it('collapses a parent row on toggle click, hiding its children', async () => {
+      await setTreeInputs();
+      treeRowEls()[0].querySelector<HTMLElement>('.gd-tree-toggle')!.click();
+      fixture.detectChanges();
+      expect(treeRowEls()).toHaveLength(3); // Engineering (collapsed) + Sales + Alan
+      const ids = treeRowEls().map((row) => row.querySelectorAll('.gd-cell')[0].textContent?.replace(/\s+/g, ' ').trim());
+      expect(ids).toEqual(['▶ 1', '▼ 2', '21']);
+    });
+
+    it('indents child rows deeper than their parent via the first cell padding-left', async () => {
+      await setTreeInputs();
+      const rows = treeRowEls();
+      const rootCell = rows[0].querySelectorAll<HTMLElement>('.gd-cell')[0];
+      const childCell = rows[1].querySelectorAll<HTMLElement>('.gd-cell')[0];
+      expect(rootCell.style.paddingLeft).toBe('8px'); // level 0
+      expect(childCell.style.paddingLeft).toBe('28px'); // level 1
+    });
+
+    it('renders no tree indentation/toggles when getChildRows is not provided', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      await setInputs(roots, columnDefs);
+      expect(treeRowEls()).toHaveLength(2);
+      expect(treeRowEls()[0].querySelector('.gd-tree-toggle')).toBeNull();
+    });
+  });
 });
 
 describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {

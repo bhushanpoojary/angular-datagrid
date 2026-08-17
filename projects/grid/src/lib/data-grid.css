@@ -224,6 +224,25 @@
   font-size: 0.9em;
 }
 
+.gd-tree-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  margin-right: 4px;
+  width: 14px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.gd-tree-spacer {
+  display: inline-block;
+  width: 14px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
 .gd-pager {
   display: flex;
   align-items: center;

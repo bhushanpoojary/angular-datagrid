@@ -51,7 +51,9 @@ interface GroupRow {
   aggregates: Record<string, unknown>;
 }
 
-type DisplayItem<TData> = { kind: 'group'; group: GroupRow } | { kind: 'row'; row: TData; rowIndex: number };
+type DisplayItem<TData> =
+  | { kind: 'group'; group: GroupRow }
+  | { kind: 'row'; row: TData; rowIndex: number; level?: number };
 
 @Component({
   selector: 'gd-data-grid',
@@ -97,6 +99,12 @@ export class DataGrid<TData = unknown> implements OnInit {
    * non-virtualized (paginated) mode - the virtual-scroll viewport requires a single fixed
    * `itemSize` for its fixed-size strategy, so virtualized rows always use `rowHeight()`. */
   readonly getRowHeight = input<((row: TData, index: number) => number) | undefined>(undefined);
+  /** Enables hierarchical tree data: returns a row's children (or `undefined`/empty for a leaf).
+   * `rowData` provides the top-level (root) rows. Expand/collapse state is tracked per-row via
+   * `getRowId`. Mutually exclusive with row grouping (`ColDef.rowGroup`) in practice - if both are
+   * configured, row grouping takes priority. Filtering/sorting apply only to the root rows in
+   * `rowData`, not recursively to children - a documented v1 scope limitation. */
+  readonly getChildRows = input<((row: TData) => readonly TData[] | undefined) | undefined>(undefined);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
@@ -230,13 +238,19 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   protected readonly aggregateColumns = computed(() => this.columns().filter((col) => !!col.def.aggFunc));
 
-  /** Flattened render list: every row when there's no grouping (1:1 with `sortedRows()`), or a
-   * mix of group-header rows and leaf rows when one or more columns declare `rowGroup: true`.
-   * Groups are a stable partition of `sortedRows()` (grouping happens AFTER sort), so sorting
-   * still determines order both across and within groups. Collapsed groups (see
-   * `collapsedGroups`) omit their descendants from the result entirely. */
+  protected readonly hasTreeData = computed(() => !!this.getChildRows());
+
+  /** Flattened render list: every row when there's no grouping/tree data (1:1 with
+   * `sortedRows()`), a mix of group-header rows and leaf rows when one or more columns declare
+   * `rowGroup: true`, or a hierarchical (indented) flattening of `sortedRows()` + their children
+   * when `getChildRows` is provided. Groups are a stable partition of `sortedRows()` (grouping
+   * happens AFTER sort), so sorting still determines order both across and within groups.
+   * Collapsed groups/tree nodes (see `collapsedGroups`) omit their descendants entirely. */
   protected readonly displayRows = computed<DisplayItem<TData>[]>(() => {
     const rows = this.sortedRows();
+    const getChildren = this.getChildRows();
+    if (getChildren) return this.buildTreeDisplayRows(rows, getChildren);
+
     const groupCols = this.groupColumns();
     if (groupCols.length === 0) {
       return rows.map((row, rowIndex): DisplayItem<TData> => ({ kind: 'row', row, rowIndex }));
@@ -283,6 +297,41 @@ export class DataGrid<TData = unknown> implements OnInit {
     buildLevel(rows, 0, '');
     return result;
   });
+
+  private buildTreeDisplayRows(
+    rootRows: readonly TData[],
+    getChildren: (row: TData) => readonly TData[] | undefined,
+  ): DisplayItem<TData>[] {
+    const collapsed = this.collapsedGroups();
+    const result: DisplayItem<TData>[] = [];
+    let rowIndex = 0;
+
+    const walk = (nodes: readonly TData[], level: number): void => {
+      for (const row of nodes) {
+        const currentIndex = rowIndex++;
+        result.push({ kind: 'row', row, rowIndex: currentIndex, level });
+        const children = getChildren(row);
+        if (children && children.length > 0 && !collapsed.has(String(this.rowId(row, currentIndex)))) {
+          walk(children, level + 1);
+        }
+      }
+    };
+    walk(rootRows, 0);
+    return result;
+  }
+
+  protected hasChildRows(row: TData): boolean {
+    const children = this.getChildRows()?.(row);
+    return !!children && children.length > 0;
+  }
+
+  protected isRowExpanded(row: TData, rowIndex: number): boolean {
+    return !this.collapsedGroups().has(String(this.rowId(row, rowIndex)));
+  }
+
+  protected toggleRowExpanded(row: TData, rowIndex: number): void {
+    this.toggleGroup(String(this.rowId(row, rowIndex)));
+  }
 
   /** `displayRows()`, paginated when `[pagination]` is enabled - used for the non-virtualized
    * body, which handles both plain pagination and row grouping (grouping always uses this path;
@@ -787,7 +836,7 @@ export class DataGrid<TData = unknown> implements OnInit {
 /** Walks `Math.abs(deltaRows)` rows up/down from `cell`'s row, returning the cell at the same
  * column position in the target row (or the furthest reachable row if fewer rows remain). */
 /** Type guard narrowing a `DisplayItem` to its leaf-row variant (used to filter out group headers). */
-function isRowItem<TData>(item: DisplayItem<TData>): item is { kind: 'row'; row: TData; rowIndex: number } {
+function isRowItem<TData>(item: DisplayItem<TData>): item is Extract<DisplayItem<TData>, { kind: 'row' }> {
   return item.kind === 'row';
 }
 

@@ -84,7 +84,7 @@
         <div class="gd-cell" role="gridcell">No rows to display</div>
       }
     </div>
-  } @else if (pagination() || hasRowGrouping()) {
+  } @else if (pagination() || hasRowGrouping() || hasTreeData()) {
     <div class="gd-body gd-body--paged" [style.min-width]="contentMinWidth()">
       @for (item of pagedDisplayItems(); track itemTrackKey(item)) {
         @if (item.kind === 'group') {
@@ -122,6 +122,8 @@
             [style.height.px]="resolvedRowHeight(item.row, item.rowIndex)"
             [attr.aria-rowindex]="item.rowIndex + 2"
             [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(item.row, item.rowIndex) : null"
+            [attr.aria-level]="hasTreeData() ? (item.level ?? 0) + 1 : null"
+            [attr.aria-expanded]="hasTreeData() && hasChildRows(item.row) ? isRowExpanded(item.row, item.rowIndex) : null"
             [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
             (click)="onRowClick(item.row, item.rowIndex, $event)"
             (keydown)="onRowKeydown(item.row, item.rowIndex, $event)"
@@ -132,6 +134,7 @@
                 role="gridcell"
                 [ngClass]="cellClasses(col, item.row)"
                 [style]="col.style"
+                [style.padding-left.px]="colIndex === 0 && hasTreeData() ? (item.level ?? 0) * 20 + 8 : null"
                 [class.gd-cell--editable]="isEditable(col, item.row)"
                 [class.gd-cell--pinned]="col.pinned"
                 [attr.tabindex]="isEditable(col, item.row) ? 0 : (isActiveCell(item.rowIndex, colIndex) ? 0 : -1)"
@@ -142,6 +145,19 @@
                 (keydown)="onCellKeydown(item.row, item.rowIndex, col, $event)"
                 (focus)="onCellFocus(item.rowIndex, colIndex)"
               >
+                @if (colIndex === 0 && hasTreeData()) {
+                  @if (hasChildRows(item.row)) {
+                    <button
+                      type="button"
+                      class="gd-tree-toggle"
+                      (click)="toggleRowExpanded(item.row, item.rowIndex); $event.stopPropagation()"
+                    >
+                      {{ isRowExpanded(item.row, item.rowIndex) ? '▼' : '▶' }}
+                    </button>
+                  } @else {
+                    <span class="gd-tree-spacer"></span>
+                  }
+                }
                 <ng-container *ngTemplateOutlet="cellContent; context: { row: item.row, col, rowIndex: item.rowIndex }" />
               </div>
             }
