@@ -56,6 +56,17 @@ type DisplayItem<TData> =
   | { kind: 'row'; row: TData; rowIndex: number; level?: number }
   | { kind: 'detail'; row: TData; rowIndex: number };
 
+interface ContextMenuAction {
+  label: string;
+  action: () => void;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  items: ContextMenuAction[];
+}
+
 @Component({
   selector: 'gd-data-grid',
   imports: [NgClass, NgTemplateOutlet, ScrollingModule, AutoFocusDirective],
@@ -120,6 +131,11 @@ export class DataGrid<TData = unknown> implements OnInit {
    * `(rowDragEnd)` and reorder your own array. Requires a real `getRowId` (not the default
    * positional index) to resolve rows correctly once sorting/filtering has reordered them. */
   readonly enableRowDrag = input<boolean>(false);
+  /** Customizes the right-click context menu's items; defaults to Copy cell/Copy row/Export CSV
+   * when omitted. Return an empty array to suppress the menu entirely for a given cell. */
+  readonly contextMenuItems = input<
+    ((params: { row: TData; col: ColDef<TData> | null }) => ContextMenuAction[]) | undefined
+  >(undefined);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
@@ -142,6 +158,8 @@ export class DataGrid<TData = unknown> implements OnInit {
   private readonly collapsedGroups = signal<ReadonlySet<string>>(new Set());
   /** Row ids (via `getRowId`) with an expanded master/detail panel - default collapsed. */
   private readonly expandedDetailRows = signal<ReadonlySet<string | number>>(new Set());
+  /** Open right-click context menu state (position + resolved items), or `null` when closed. */
+  protected readonly contextMenuState = signal<ContextMenuState | null>(null);
   /** User-dragged column order, as a list of column keys; `null` uses `columnDefs`' natural order. */
   private readonly columnOrder = signal<string[] | null>(null);
   /** User-dragged column widths (px), keyed by column key; overrides `col.width` when present. */
@@ -495,6 +513,40 @@ export class DataGrid<TData = unknown> implements OnInit {
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  /** Opens the right-click context menu for a cell; uses `contextMenuItems()` when provided,
+   * otherwise falls back to Copy cell / Copy row / Export CSV. */
+  protected onCellContextMenu(row: TData, col: ResolvedColumn<TData>, event: MouseEvent): void {
+    event.preventDefault();
+    const customItems = this.contextMenuItems();
+    const items = customItems ? customItems({ row, col: col.def }) : this.defaultContextMenuItems(row, col);
+    if (items.length === 0) return;
+    this.contextMenuState.set({ x: event.clientX, y: event.clientY, items });
+  }
+
+  private defaultContextMenuItems(row: TData, col: ResolvedColumn<TData>): ContextMenuAction[] {
+    return [
+      { label: 'Copy cell', action: () => this.copyToClipboard(this.cellDisplay(row, col.def)) },
+      {
+        label: 'Copy row',
+        action: () => this.copyToClipboard(this.columns().map((c) => this.cellDisplay(row, c.def)).join('\t')),
+      },
+      { label: 'Export CSV', action: () => this.exportDataAsCsv() },
+    ];
+  }
+
+  private copyToClipboard(text: string): void {
+    navigator.clipboard?.writeText(text);
+  }
+
+  protected closeContextMenu(): void {
+    this.contextMenuState.set(null);
+  }
+
+  protected runContextMenuAction(action: () => void): void {
+    action();
+    this.closeContextMenu();
   }
 
   protected trackRow = (index: number, row: TData): string | number => this.getRowId()(row, index);

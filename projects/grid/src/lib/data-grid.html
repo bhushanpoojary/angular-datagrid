@@ -171,6 +171,7 @@
             (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
             (keydown)="onCellKeydown(row, rowIndex, col, $event)"
             (focus)="onCellFocus(rowIndex, colIndex)"
+            (contextmenu)="onCellContextMenu(row, col, $event)"
           >
             <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
           </div>
@@ -219,6 +220,21 @@
   }
 </div>
 
+@if (contextMenuState(); as menu) {
+  <div
+    class="gd-context-menu-backdrop"
+    tabindex="-1"
+    (click)="closeContextMenu()"
+    (keydown.escape)="closeContextMenu()"
+    (contextmenu)="$event.preventDefault(); closeContextMenu()"
+  ></div>
+  <div class="gd-context-menu" role="menu" [style.left.px]="menu.x" [style.top.px]="menu.y">
+    @for (item of menu.items; track item.label) {
+      <button type="button" role="menuitem" (click)="runContextMenuAction(item.action)">{{ item.label }}</button>
+    }
+  </div>
+}
+
 <ng-template #dataRow let-row="row" let-rowIndex="rowIndex" let-level="level">
   <div
     class="gd-row"
@@ -254,6 +270,7 @@
         (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
         (keydown)="onCellKeydown(row, rowIndex, col, $event)"
         (focus)="onCellFocus(rowIndex, colIndex)"
+        (contextmenu)="onCellContextMenu(row, col, $event)"
       >
         @if (colIndex === 0 && hasTreeData()) {
           @if (hasChildRows(row)) {

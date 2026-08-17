@@ -1243,6 +1243,78 @@ describe('DataGrid', () => {
       expect(events).toHaveLength(0);
     });
   });
+
+  describe('context menu', () => {
+    function cellAt(rowIndex: number, colIndex: number): HTMLElement {
+      const rows = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-body--paged .gd-row'),
+      );
+      return rows[rowIndex].querySelectorAll<HTMLElement>('.gd-cell')[colIndex];
+    }
+
+    function menuItemLabels(): string[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-context-menu button'),
+      ).map((el) => el.textContent?.trim() ?? '');
+    }
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('pagination', true);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: vi.fn() },
+        configurable: true,
+      });
+    });
+
+    it('opens the default menu (Copy cell / Copy row / Export CSV) on right-click', async () => {
+      await setInputs(rowData, columnDefs);
+      cellAt(0, 1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 60 }));
+      fixture.detectChanges();
+
+      expect(menuItemLabels()).toEqual(['Copy cell', 'Copy row', 'Export CSV']);
+      const menu = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.gd-context-menu')!;
+      expect(menu.style.left).toBe('50px');
+      expect(menu.style.top).toBe('60px');
+    });
+
+    it('"Copy cell" copies the cell\'s displayed value and closes the menu', async () => {
+      await setInputs(rowData, columnDefs);
+      cellAt(0, 1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      fixture.detectChanges();
+
+      const [copyCellButton] = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-context-menu button'),
+      );
+      copyCellButton.click();
+      fixture.detectChanges();
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Ada');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-context-menu')).toBeNull();
+    });
+
+    it('closes the menu when clicking the backdrop', async () => {
+      await setInputs(rowData, columnDefs);
+      cellAt(0, 1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-context-menu')).not.toBeNull();
+
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.gd-context-menu-backdrop')!.click();
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-context-menu')).toBeNull();
+    });
+
+    it('uses custom contextMenuItems when provided, instead of the defaults', async () => {
+      const customAction = vi.fn();
+      fixture.componentRef.setInput('contextMenuItems', () => [{ label: 'Custom action', action: customAction }]);
+      await setInputs(rowData, columnDefs);
+      cellAt(0, 1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(menuItemLabels()).toEqual(['Custom action']);
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.gd-context-menu button')!.click();
+      expect(customAction).toHaveBeenCalled();
+    });
+  });
 });
 
 describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {
