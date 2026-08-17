@@ -76,7 +76,15 @@
     </div>
   }
 
-  @if (sortedRows().length === 0) {
+  @if (hasPinnedRows()) {
+    <div class="gd-body gd-body--pinned-top" [style.min-width]="contentMinWidth()">
+      @for (row of pinnedTopRows(); track pinnedRowId(row)) {
+        <ng-container *ngTemplateOutlet="dataRow; context: { row, rowIndex: pinnedRowIndex(row) }" />
+      }
+    </div>
+  }
+
+  @if (sortedRows().length === 0 && !hasPinnedRows()) {
     <div class="gd-empty" role="row">
       @if (noRowsTemplate()) {
         <ng-container *ngTemplateOutlet="noRowsTemplate()!" />
@@ -122,63 +130,9 @@
             </div>
           </div>
         } @else {
-          <div
-            class="gd-row"
-            role="row"
-            [ngClass]="rowClasses(item.row)"
-            [class.gd-row--selected]="isSelected(item.row, item.rowIndex)"
-            [style.height.px]="resolvedRowHeight(item.row, item.rowIndex)"
-            [attr.aria-rowindex]="item.rowIndex + 2"
-            [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(item.row, item.rowIndex) : null"
-            [attr.aria-level]="hasTreeData() ? (item.level ?? 0) + 1 : null"
-            [attr.aria-expanded]="hasTreeData() && hasChildRows(item.row) ? isRowExpanded(item.row, item.rowIndex) : null"
-            [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
-            (click)="onRowClick(item.row, item.rowIndex, $event)"
-            (keydown)="onRowKeydown(item.row, item.rowIndex, $event)"
-          >
-            @for (col of columns(); track col.key; let colIndex = $index) {
-              <div
-                class="gd-cell"
-                role="gridcell"
-                [ngClass]="cellClasses(col, item.row)"
-                [style]="col.style"
-                [style.padding-left.px]="colIndex === 0 && hasTreeData() ? (item.level ?? 0) * 20 + 8 : null"
-                [class.gd-cell--editable]="isEditable(col, item.row)"
-                [class.gd-cell--pinned]="col.pinned"
-                [attr.tabindex]="isEditable(col, item.row) ? 0 : (isActiveCell(item.rowIndex, colIndex) ? 0 : -1)"
-                [attr.aria-colindex]="colIndex + 1"
-                [attr.title]="cellTooltip(col, item.row)"
-                (click)="onCellClick(item.row, item.rowIndex, col, $event)"
-                (dblclick)="onCellDblClick(item.row, item.rowIndex, col, $event)"
-                (keydown)="onCellKeydown(item.row, item.rowIndex, col, $event)"
-                (focus)="onCellFocus(item.rowIndex, colIndex)"
-              >
-                @if (colIndex === 0 && hasTreeData()) {
-                  @if (hasChildRows(item.row)) {
-                    <button
-                      type="button"
-                      class="gd-tree-toggle"
-                      (click)="toggleRowExpanded(item.row, item.rowIndex); $event.stopPropagation()"
-                    >
-                      {{ isRowExpanded(item.row, item.rowIndex) ? '▼' : '▶' }}
-                    </button>
-                  } @else {
-                    <span class="gd-tree-spacer"></span>
-                  }
-                }
-                @if (colIndex === 0 && hasDetailTemplate()) {
-                  <button
-                    type="button"
-                    class="gd-detail-toggle"
-                    (click)="toggleDetail(item.row, item.rowIndex); $event.stopPropagation()"
-                  >
-                    {{ isDetailExpanded(item.row, item.rowIndex) ? '▾' : '▸' }}
-                  </button>
-                }
-                <ng-container *ngTemplateOutlet="cellContent; context: { row: item.row, col, rowIndex: item.rowIndex }" />
-              </div>
-            }
-          </div>
+          <ng-container
+            *ngTemplateOutlet="dataRow; context: { row: item.row, rowIndex: item.rowIndex, level: item.level }"
+          />
         }
       }
     </div>
@@ -229,6 +183,14 @@
     <div class="gd-overlay gd-overlay--loading" role="status" aria-live="polite">Loading…</div>
   }
 
+  @if (hasPinnedRows() && pinnedBottomRows().length > 0) {
+    <div class="gd-body gd-body--pinned-bottom" [style.min-width]="contentMinWidth()">
+      @for (row of pinnedBottomRows(); track pinnedRowId(row)) {
+        <ng-container *ngTemplateOutlet="dataRow; context: { row, rowIndex: pinnedRowIndex(row) }" />
+      }
+    </div>
+  }
+
   @if (pagination() && sortedRows().length > 0) {
     <div class="gd-pager">
       <span class="gd-pager__range">{{ pageRangeText() }}</span>
@@ -256,6 +218,73 @@
     </div>
   }
 </div>
+
+<ng-template #dataRow let-row="row" let-rowIndex="rowIndex" let-level="level">
+  <div
+    class="gd-row"
+    role="row"
+    [ngClass]="rowClasses(row)"
+    [class.gd-row--selected]="isSelected(row, rowIndex)"
+    [style.height.px]="resolvedRowHeight(row, rowIndex)"
+    [attr.aria-rowindex]="rowIndex + 2"
+    [attr.aria-selected]="rowSelection() !== 'none' ? isSelected(row, rowIndex) : null"
+    [attr.aria-level]="hasTreeData() ? (level ?? 0) + 1 : null"
+    [attr.aria-expanded]="hasTreeData() && hasChildRows(row) ? isRowExpanded(row, rowIndex) : null"
+    [attr.tabindex]="rowSelection() !== 'none' ? 0 : null"
+    [attr.draggable]="enableRowDrag() ? true : null"
+    (click)="onRowClick(row, rowIndex, $event)"
+    (keydown)="onRowKeydown(row, rowIndex, $event)"
+    (dragstart)="onRowDragStart(row, rowIndex, $event)"
+    (dragover)="onRowDragOver($event)"
+    (drop)="onRowDrop(row, $event)"
+  >
+    @for (col of columns(); track col.key; let colIndex = $index) {
+      <div
+        class="gd-cell"
+        role="gridcell"
+        [ngClass]="cellClasses(col, row)"
+        [style]="col.style"
+        [style.padding-left.px]="colIndex === 0 && hasTreeData() ? (level ?? 0) * 20 + 8 : null"
+        [class.gd-cell--editable]="isEditable(col, row)"
+        [class.gd-cell--pinned]="col.pinned"
+        [attr.tabindex]="isEditable(col, row) ? 0 : (isActiveCell(rowIndex, colIndex) ? 0 : -1)"
+        [attr.aria-colindex]="colIndex + 1"
+        [attr.title]="cellTooltip(col, row)"
+        (click)="onCellClick(row, rowIndex, col, $event)"
+        (dblclick)="onCellDblClick(row, rowIndex, col, $event)"
+        (keydown)="onCellKeydown(row, rowIndex, col, $event)"
+        (focus)="onCellFocus(rowIndex, colIndex)"
+      >
+        @if (colIndex === 0 && hasTreeData()) {
+          @if (hasChildRows(row)) {
+            <button
+              type="button"
+              class="gd-tree-toggle"
+              (click)="toggleRowExpanded(row, rowIndex); $event.stopPropagation()"
+            >
+              {{ isRowExpanded(row, rowIndex) ? '▼' : '▶' }}
+            </button>
+          } @else {
+            <span class="gd-tree-spacer"></span>
+          }
+        }
+        @if (colIndex === 0 && hasDetailTemplate()) {
+          <button
+            type="button"
+            class="gd-detail-toggle"
+            (click)="toggleDetail(row, rowIndex); $event.stopPropagation()"
+          >
+            {{ isDetailExpanded(row, rowIndex) ? '▾' : '▸' }}
+          </button>
+        }
+        @if (colIndex === 0 && enableRowDrag()) {
+          <span class="gd-row-drag-handle" aria-hidden="true">⋮⋮</span>
+        }
+        <ng-container *ngTemplateOutlet="cellContent; context: { row, col, rowIndex }" />
+      </div>
+    }
+  </div>
+</ng-template>
 
 <ng-template #cellContent let-row="row" let-col="col" let-rowIndex="rowIndex">
   @if (col.def.checkboxSelection) {

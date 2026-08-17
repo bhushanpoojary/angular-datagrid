@@ -111,12 +111,24 @@ export class DataGrid<TData = unknown> implements OnInit {
    * Composes with row grouping/tree data (detail rows are injected after that structure is
    * resolved); not designed to combine with tree data's own first-cell toggle in the same grid. */
   readonly detailRowTemplate = input<TemplateRef<{ $implicit: TData; data: TData }> | undefined>(undefined);
+  /** Pins a row to a fixed, always-visible section above (`'top'`) or below (`'bottom'`) the
+   * scrollable body, outside the normal filter/sort/page pipeline entirely - return `null` (or
+   * omit the input) for rows that should stay in the regular scrollable body. */
+  readonly isRowPinned = input<((row: TData) => 'top' | 'bottom' | null) | undefined>(undefined);
+  /** Enables drag-and-drop row reordering (native HTML5 drag-and-drop, via a drag handle in each
+   * row's first cell). The grid does not reorder `rowData` itself (a one-way input) - handle
+   * `(rowDragEnd)` and reorder your own array. Requires a real `getRowId` (not the default
+   * positional index) to resolve rows correctly once sorting/filtering has reordered them. */
+  readonly enableRowDrag = input<boolean>(false);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
   readonly selectionChanged = output<TData[]>();
   /** Fires after an inline edit is committed (Enter or blur). */
   readonly cellValueChanged = output<CellValueChangedEvent<TData>>();
+  /** Fires after a drag-and-drop row reorder; `fromIndex`/`toIndex` index into `rowData()`. The
+   * grid does not reorder its own data - apply the change to your `rowData` array in response. */
+  readonly rowDragEnd = output<{ row: TData; fromIndex: number; toIndex: number }>();
 
   private readonly sortState = signal<SortEntry[]>([]);
   private readonly columnFilters = signal<Record<string, string>>({});
@@ -186,10 +198,14 @@ export class DataGrid<TData = unknown> implements OnInit {
     const cols = this.columns();
     const filters = this.columnFilters();
     const quick = this.quickFilterText().trim().toLowerCase();
+    const pin = this.isRowPinned();
+    // Pinned rows are rendered in their own always-visible sections (see pinnedTopRows/
+    // pinnedBottomRows) and never participate in the normal filter/sort/page/scroll pipeline.
+    const candidateRows = pin ? this.rowData().filter((row) => !pin(row)) : this.rowData();
     const activeColumnFilters = cols.filter((col) => (filters[col.key] ?? '').trim().length > 0);
-    if (activeColumnFilters.length === 0 && !quick) return this.rowData();
+    if (activeColumnFilters.length === 0 && !quick) return candidateRows;
 
-    return this.rowData().filter((row) => {
+    return candidateRows.filter((row) => {
       for (const col of activeColumnFilters) {
         const filterText = filters[col.key].trim();
         const type = col.def.filter === 'number' || col.def.filter === 'date' ? col.def.filter : 'text';
@@ -201,6 +217,20 @@ export class DataGrid<TData = unknown> implements OnInit {
       return true;
     });
   });
+
+  protected readonly pinnedTopRows = computed<readonly TData[]>(() => {
+    const pin = this.isRowPinned();
+    return pin ? this.rowData().filter((row) => pin(row) === 'top') : [];
+  });
+
+  protected readonly pinnedBottomRows = computed<readonly TData[]>(() => {
+    const pin = this.isRowPinned();
+    return pin ? this.rowData().filter((row) => pin(row) === 'bottom') : [];
+  });
+
+  protected readonly hasPinnedRows = computed(
+    () => this.pinnedTopRows().length > 0 || this.pinnedBottomRows().length > 0,
+  );
 
   protected readonly sortedRows = computed<readonly TData[]>(() => {
     const sorts = this.sortState();
@@ -508,6 +538,43 @@ export class DataGrid<TData = unknown> implements OnInit {
     if (target.closest('input[type="checkbox"]') || target.closest('.gd-cell--editable')) return;
     event.preventDefault();
     this.toggleRowSelection(row, index);
+  }
+
+  /** A pinned row's index within `rowData()` - used as its `rowId()` basis since pinned rows are
+   * excluded from `sortedRows()` entirely (see `filteredRows`). */
+  protected pinnedRowIndex(row: TData): number {
+    return this.rowData().indexOf(row);
+  }
+
+  protected pinnedRowId(row: TData): string | number {
+    return this.rowId(row, this.pinnedRowIndex(row));
+  }
+
+  protected onRowDragStart(row: TData, index: number, event: DragEvent): void {
+    if (!this.enableRowDrag()) return;
+    event.dataTransfer?.setData('text/plain', String(this.rowId(row, index)));
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  protected onRowDragOver(event: DragEvent): void {
+    if (this.enableRowDrag()) event.preventDefault();
+  }
+
+  /** Resolves both rows against `rowData()` by identity (id string / object reference) rather
+   * than trusting the transient `sortedRows()`-relative index passed around during the drag, so
+   * this stays correct regardless of active sorting/filtering. Requires a real `getRowId` (not
+   * the default positional index) to work reliably once sorting/filtering reorders rows. */
+  protected onRowDrop(targetRow: TData, event: DragEvent): void {
+    if (!this.enableRowDrag()) return;
+    event.preventDefault();
+    const sourceId = event.dataTransfer?.getData('text/plain');
+    if (!sourceId) return;
+
+    const rows = this.rowData();
+    const fromIndex = rows.findIndex((row, index) => String(this.rowId(row, index)) === sourceId);
+    const toIndex = rows.indexOf(targetRow);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+    this.rowDragEnd.emit({ row: rows[fromIndex], fromIndex, toIndex });
   }
 
   protected toggleSelectAll(): void {

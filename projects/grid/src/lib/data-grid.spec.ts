@@ -1131,6 +1131,118 @@ describe('DataGrid', () => {
       expect(treeRowEls()[0].querySelector('.gd-tree-toggle')).toBeNull();
     });
   });
+
+  describe('row pinning', () => {
+    const pinRows: Row[] = [
+      { id: 1, name: 'Header Row', score: 0 },
+      { id: 2, name: 'Ada', score: 91 },
+      { id: 3, name: 'Grace', score: 88 },
+      { id: 4, name: 'Footer Row', score: 0 },
+    ];
+    const isRowPinned = (row: Row): 'top' | 'bottom' | null => {
+      if (row.id === 1) return 'top';
+      if (row.id === 4) return 'bottom';
+      return null;
+    };
+
+    it('renders pinned-top rows in their own always-visible section, excluded from the main body', async () => {
+      fixture.componentRef.setInput('isRowPinned', isRowPinned);
+      await setInputs(pinRows, columnDefs);
+
+      const pinnedTop = (fixture.nativeElement as HTMLElement).querySelectorAll('.gd-body--pinned-top .gd-row');
+      expect(pinnedTop).toHaveLength(1);
+      expect(pinnedTop[0].textContent).toContain('Header Row');
+      expect(bodyText()).toEqual(['2', '3']); // Ada and Grace only, in the scrollable body
+    });
+
+    it('renders pinned-bottom rows in their own always-visible section', async () => {
+      fixture.componentRef.setInput('isRowPinned', isRowPinned);
+      await setInputs(pinRows, columnDefs);
+
+      const pinnedBottom = (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.gd-body--pinned-bottom .gd-row',
+      );
+      expect(pinnedBottom).toHaveLength(1);
+      expect(pinnedBottom[0].textContent).toContain('Footer Row');
+    });
+
+    it('quick filtering only affects the unpinned rows in the scrollable body', async () => {
+      fixture.componentRef.setInput('isRowPinned', isRowPinned);
+      fixture.componentRef.setInput('quickFilterText', 'Ada');
+      await setInputs(pinRows, columnDefs);
+
+      expect(bodyText()).toEqual(['2']); // only Ada matches, in the scrollable body
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('.gd-body--pinned-top .gd-row')).toHaveLength(1);
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('.gd-body--pinned-bottom .gd-row')).toHaveLength(
+        1,
+      );
+    });
+
+    it('renders no pinned sections when isRowPinned is not provided', async () => {
+      await setInputs(pinRows, columnDefs);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-body--pinned-top')).toBeNull();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.gd-body--pinned-bottom')).toBeNull();
+    });
+  });
+
+  describe('row drag reordering', () => {
+    const dragRows: Row[] = [
+      { id: 1, name: 'Ada', score: 91 },
+      { id: 2, name: 'Grace', score: 88 },
+      { id: 3, name: 'Alan', score: 70 },
+    ];
+
+    function bodyRowEls(): HTMLElement[] {
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-body--paged .gd-row'),
+      );
+    }
+
+    it('shows a drag handle in the first cell only when enableRowDrag is true', async () => {
+      fixture.componentRef.setInput('enableRowDrag', true);
+      fixture.componentRef.setInput('pagination', true);
+      await setInputs(dragRows, columnDefs);
+      expect(bodyRowEls()[0].querySelector('.gd-row-drag-handle')).not.toBeNull();
+    });
+
+    it('emits rowDragEnd with the correct from/to indices on drop, without mutating rowData', async () => {
+      fixture.componentRef.setInput('enableRowDrag', true);
+      fixture.componentRef.setInput('getRowId', (row: Row) => row.id);
+      fixture.componentRef.setInput('pagination', true);
+      const events: { row: Row; fromIndex: number; toIndex: number }[] = [];
+      fixture.componentInstance.rowDragEnd.subscribe((event) => events.push(event));
+      await setInputs(dragRows, columnDefs);
+
+      const rows = bodyRowEls();
+      const dataTransfer = { setData: vi.fn(), getData: vi.fn().mockReturnValue('1'), effectAllowed: '' };
+      const dragStart = new Event('dragstart', { bubbles: true }) as DragEvent;
+      Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer });
+      const drop = new Event('drop', { bubbles: true }) as DragEvent;
+      Object.defineProperty(drop, 'dataTransfer', { value: dataTransfer });
+
+      rows[0].dispatchEvent(dragStart); // drag Ada (id 1, fromIndex 0)
+      rows[2].dispatchEvent(drop); // drop onto Alan (id 3, toIndex 2)
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ row: dragRows[0], fromIndex: 0, toIndex: 2 });
+      expect(dragRows.map((r) => r.id)).toEqual([1, 2, 3]); // rowData itself is untouched
+    });
+
+    it('does not emit rowDragEnd when enableRowDrag is false', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      const events: unknown[] = [];
+      fixture.componentInstance.rowDragEnd.subscribe((event) => events.push(event));
+      await setInputs(dragRows, columnDefs);
+
+      const rows = bodyRowEls();
+      const dataTransfer = { setData: vi.fn(), getData: vi.fn().mockReturnValue('1'), effectAllowed: '' };
+      const drop = new Event('drop', { bubbles: true }) as DragEvent;
+      Object.defineProperty(drop, 'dataTransfer', { value: dataTransfer });
+      rows[2].dispatchEvent(drop);
+
+      expect(events).toHaveLength(0);
+    });
+  });
 });
 
 describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {
