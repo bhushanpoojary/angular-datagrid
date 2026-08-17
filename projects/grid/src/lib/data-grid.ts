@@ -7,6 +7,7 @@ import {
   OnInit,
   TemplateRef,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -146,6 +147,13 @@ export class DataGrid<TData = unknown> implements OnInit {
   readonly contextMenuItems = input<
     ((params: { row: TData; col: ColDef<TData> | null }) => ContextMenuAction[]) | undefined
   >(undefined);
+  /** Briefly highlights ("flashes") any cell whose displayed value changes between renders -
+   * useful for live/streaming data (e.g. an RxJS interval pushing new `rowData` snapshots).
+   * Requires a real `getRowId` (not the default positional index) so a row's identity survives
+   * across updates; otherwise every cell would appear to "change" whenever rows reorder. */
+  readonly enableChangeFlash = input<boolean>(false);
+  /** How long (ms) a flashed cell stays highlighted before the class is removed. */
+  readonly changeFlashDurationMs = input<number>(800);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
@@ -527,6 +535,46 @@ export class DataGrid<TData = unknown> implements OnInit {
     const selected = this.selection();
     return rows.every((row, index) => selected.has(this.rowId(row, index)));
   });
+
+  /** Cell keys (`${rowId}:${colKey}`) currently mid-flash from a detected value change. */
+  private readonly flashingCells = signal<ReadonlySet<string>>(new Set());
+  /** Last-seen displayed value per cell key - a plain mutable map (not a signal) since it's only
+   * ever read/written from inside the `enableChangeFlash` effect below, never from a template. */
+  private readonly previousCellValues = new Map<string, string>();
+
+  constructor() {
+    effect(() => {
+      if (!this.enableChangeFlash()) return;
+      const rows = this.sortedRows();
+      const cols = this.columns();
+      const changedKeys: string[] = [];
+
+      rows.forEach((row, index) => {
+        const rid = this.rowId(row, index);
+        for (const col of cols) {
+          const key = `${rid}:${col.key}`;
+          const value = this.cellDisplay(row, col.def);
+          const previous = this.previousCellValues.get(key);
+          if (previous !== undefined && previous !== value) changedKeys.push(key);
+          this.previousCellValues.set(key, value);
+        }
+      });
+
+      if (changedKeys.length === 0) return;
+      this.flashingCells.update((current) => new Set([...current, ...changedKeys]));
+      setTimeout(() => {
+        this.flashingCells.update((current) => {
+          const next = new Set(current);
+          changedKeys.forEach((key) => next.delete(key));
+          return next;
+        });
+      }, this.changeFlashDurationMs());
+    });
+  }
+
+  protected isCellFlashing(col: ResolvedColumn<TData>, row: TData, rowIndex: number): boolean {
+    return this.flashingCells().has(`${this.rowId(row, rowIndex)}:${col.key}`);
+  }
 
   ngOnInit(): void {
     const initialSort = this.columns()

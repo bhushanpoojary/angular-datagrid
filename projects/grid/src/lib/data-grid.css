@@ -179,6 +179,11 @@
   background: var(--gd-selected-background, #e0e7ff);
 }
 
+.gd-cell--flash {
+  background-color: color-mix(in srgb, var(--gd-accent-color, #2563eb) 30%, transparent);
+  transition: background-color 0.8s ease-out;
+}
+
 .gd-cell--sortable {
   cursor: pointer;
   user-select: none;

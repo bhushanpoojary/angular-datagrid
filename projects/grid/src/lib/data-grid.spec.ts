@@ -864,6 +864,65 @@ describe('DataGrid', () => {
     });
   });
 
+  describe('change flash (live updates)', () => {
+    function cellAt(rowIndex: number, colIndex: number): HTMLElement {
+      const rows = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-viewport .gd-row'),
+      );
+      return rows[rowIndex].querySelectorAll<HTMLElement>('.gd-cell')[colIndex];
+    }
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('enableChangeFlash', true);
+      fixture.componentRef.setInput('getRowId', (row: Row) => row.id);
+    });
+
+    it('does not flash anything on the initial render', async () => {
+      await setInputs(rowData, columnDefs);
+      expect(cellAt(0, 2).classList).not.toContain('gd-cell--flash');
+    });
+
+    it('flashes a cell whose value changed since the last render, leaving other cells untouched', async () => {
+      await setInputs(rowData, columnDefs);
+      const updated = rowData.map((row) => (row.id === 1 ? { ...row, score: 999 } : row));
+      fixture.componentRef.setInput('rowData', updated);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(cellAt(0, 2).classList).toContain('gd-cell--flash'); // Ada's score changed
+      expect(cellAt(0, 1).classList).not.toContain('gd-cell--flash'); // Ada's name did not
+      expect(cellAt(1, 2).classList).not.toContain('gd-cell--flash'); // Grace's row is unaffected
+    });
+
+    it('clears the flash class after the flash duration elapses', async () => {
+      fixture.componentRef.setInput('changeFlashDurationMs', 10);
+      await setInputs(rowData, columnDefs);
+      const updated = rowData.map((row) => (row.id === 1 ? { ...row, score: 999 } : row));
+      fixture.componentRef.setInput('rowData', updated);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(cellAt(0, 2).classList).toContain('gd-cell--flash');
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      fixture.detectChanges();
+      expect(cellAt(0, 2).classList).not.toContain('gd-cell--flash');
+    });
+
+    it('does not flash when enableChangeFlash is false (default)', async () => {
+      fixture.componentRef.setInput('enableChangeFlash', false);
+      await setInputs(rowData, columnDefs);
+      const updated = rowData.map((row) => (row.id === 1 ? { ...row, score: 999 } : row));
+      fixture.componentRef.setInput('rowData', updated);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(cellAt(0, 2).classList).not.toContain('gd-cell--flash');
+    });
+  });
+
   describe('tooltips & overlays', () => {
     it('sets a native title attribute from tooltip: true using the displayed value', async () => {
       await setInputs(rowData, [
