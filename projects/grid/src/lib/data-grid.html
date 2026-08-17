@@ -84,7 +84,7 @@
         <div class="gd-cell" role="gridcell">No rows to display</div>
       }
     </div>
-  } @else if (pagination() || hasRowGrouping() || hasTreeData()) {
+  } @else if (pagination() || hasRowGrouping() || hasTreeData() || hasDetailTemplate()) {
     <div class="gd-body gd-body--paged" [style.min-width]="contentMinWidth()">
       @for (item of pagedDisplayItems(); track itemTrackKey(item)) {
         @if (item.kind === 'group') {
@@ -111,6 +111,14 @@
                   {{ aggCol.def.headerName ?? aggCol.def.field }}: {{ formatAggregateValue(item.group.aggregates[aggCol.key]) }}
                 </span>
               }
+            </div>
+          </div>
+        } @else if (item.kind === 'detail') {
+          <div class="gd-row gd-row--detail" role="row">
+            <div class="gd-cell gd-detail-cell" role="gridcell">
+              <ng-container
+                *ngTemplateOutlet="detailRowTemplate()!; context: { $implicit: item.row, data: item.row }"
+              />
             </div>
           </div>
         } @else {
@@ -157,6 +165,15 @@
                   } @else {
                     <span class="gd-tree-spacer"></span>
                   }
+                }
+                @if (colIndex === 0 && hasDetailTemplate()) {
+                  <button
+                    type="button"
+                    class="gd-detail-toggle"
+                    (click)="toggleDetail(item.row, item.rowIndex); $event.stopPropagation()"
+                  >
+                    {{ isDetailExpanded(item.row, item.rowIndex) ? '▾' : '▸' }}
+                  </button>
                 }
                 <ng-container *ngTemplateOutlet="cellContent; context: { row: item.row, col, rowIndex: item.rowIndex }" />
               </div>

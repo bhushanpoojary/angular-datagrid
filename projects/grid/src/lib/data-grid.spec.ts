@@ -1181,3 +1181,75 @@ describe('DataGrid templates (cellRenderer / noRowsTemplate)', () => {
     expect(empty?.textContent?.trim()).toBe('Nothing here yet');
   });
 });
+
+describe('DataGrid master/detail', () => {
+  @Component({
+    imports: [DataGrid],
+    template: `
+      <gd-data-grid [rowData]="rowData" [columnDefs]="columnDefs" [detailRowTemplate]="detailTpl" [pagination]="true" />
+      <ng-template #detailTpl let-row>
+        <p class="detail-content">Details for {{ row.name }}</p>
+      </ng-template>
+    `,
+  })
+  class HostComponent {
+    @ViewChild('detailTpl', { static: true }) detailTpl!: TemplateRef<{ $implicit: Row; data: Row }>;
+
+    rowData: Row[] = [
+      { id: 1, name: 'Ada', score: 91 },
+      { id: 2, name: 'Grace', score: 88 },
+    ];
+    columnDefs: ColDef<Row>[] = [
+      { field: 'id', headerName: 'ID' },
+      { field: 'name', headerName: 'Name' },
+    ];
+  }
+
+  function rowEls(fixture: ComponentFixture<HostComponent>): HTMLElement[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-body--paged .gd-row'),
+    );
+  }
+
+  it('renders no detail rows by default (collapsed)', async () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(rowEls(fixture)).toHaveLength(2); // just the 2 master rows
+    expect((fixture.nativeElement as HTMLElement).querySelector('.detail-content')).toBeNull();
+  });
+
+  it('expands a detail row on toggle click, injected right after its master row', async () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    rowEls(fixture)[0].querySelector<HTMLElement>('.gd-detail-toggle')!.click();
+    fixture.detectChanges();
+
+    const rows = rowEls(fixture);
+    expect(rows).toHaveLength(3); // Ada + its detail row + Grace
+    expect(rows[1].classList).toContain('gd-row--detail');
+    expect(rows[1].querySelector('.detail-content')?.textContent?.trim()).toBe('Details for Ada');
+    expect(rows[2].classList).not.toContain('gd-row--detail'); // Grace, unaffected
+  });
+
+  it('collapses the detail row again on a second toggle click', async () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const toggle = rowEls(fixture)[0].querySelector<HTMLElement>('.gd-detail-toggle')!;
+    toggle.click();
+    fixture.detectChanges();
+    expect(rowEls(fixture)).toHaveLength(3);
+
+    rowEls(fixture)[0].querySelector<HTMLElement>('.gd-detail-toggle')!.click();
+    fixture.detectChanges();
+    expect(rowEls(fixture)).toHaveLength(2);
+  });
+});

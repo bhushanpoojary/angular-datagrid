@@ -53,7 +53,8 @@ interface GroupRow {
 
 type DisplayItem<TData> =
   | { kind: 'group'; group: GroupRow }
-  | { kind: 'row'; row: TData; rowIndex: number; level?: number };
+  | { kind: 'row'; row: TData; rowIndex: number; level?: number }
+  | { kind: 'detail'; row: TData; rowIndex: number };
 
 @Component({
   selector: 'gd-data-grid',
@@ -105,6 +106,11 @@ export class DataGrid<TData = unknown> implements OnInit {
    * configured, row grouping takes priority. Filtering/sorting apply only to the root rows in
    * `rowData`, not recursively to children - a documented v1 scope limitation. */
   readonly getChildRows = input<((row: TData) => readonly TData[] | undefined) | undefined>(undefined);
+  /** Enables master/detail: rows get an expand toggle that reveals a full-width detail panel
+   * rendered from this template, `<ng-template #tpl let-row let-data="data">...</ng-template>`.
+   * Composes with row grouping/tree data (detail rows are injected after that structure is
+   * resolved); not designed to combine with tree data's own first-cell toggle in the same grid. */
+  readonly detailRowTemplate = input<TemplateRef<{ $implicit: TData; data: TData }> | undefined>(undefined);
 
   readonly gridReady = output<GridReadyEvent>();
   /** Fires with the full list of currently-selected row objects whenever selection changes. */
@@ -122,6 +128,8 @@ export class DataGrid<TData = unknown> implements OnInit {
   private readonly activeCell = signal<{ rowIndex: number; colIndex: number }>({ rowIndex: 0, colIndex: 0 });
   /** Row-group keys the user has collapsed; a key not in this set is expanded (default expanded). */
   private readonly collapsedGroups = signal<ReadonlySet<string>>(new Set());
+  /** Row ids (via `getRowId`) with an expanded master/detail panel - default collapsed. */
+  private readonly expandedDetailRows = signal<ReadonlySet<string | number>>(new Set());
   /** User-dragged column order, as a list of column keys; `null` uses `columnDefs`' natural order. */
   private readonly columnOrder = signal<string[] | null>(null);
   /** User-dragged column widths (px), keyed by column key; overrides `col.width` when present. */
@@ -240,13 +248,32 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   protected readonly hasTreeData = computed(() => !!this.getChildRows());
 
+  protected readonly hasDetailTemplate = computed(() => !!this.detailRowTemplate());
+
   /** Flattened render list: every row when there's no grouping/tree data (1:1 with
    * `sortedRows()`), a mix of group-header rows and leaf rows when one or more columns declare
    * `rowGroup: true`, or a hierarchical (indented) flattening of `sortedRows()` + their children
    * when `getChildRows` is provided. Groups are a stable partition of `sortedRows()` (grouping
    * happens AFTER sort), so sorting still determines order both across and within groups.
-   * Collapsed groups/tree nodes (see `collapsedGroups`) omit their descendants entirely. */
+   * Collapsed groups/tree nodes (see `collapsedGroups`) omit their descendants entirely.
+   * Detail rows (see `detailRowTemplate`) are injected as a final pass, after grouping/tree
+   * structure is resolved, so master/detail composes with either of those. */
   protected readonly displayRows = computed<DisplayItem<TData>[]>(() => {
+    const base = this.buildBaseDisplayRows();
+    if (!this.hasDetailTemplate()) return base;
+
+    const expanded = this.expandedDetailRows();
+    const result: DisplayItem<TData>[] = [];
+    for (const item of base) {
+      result.push(item);
+      if (item.kind === 'row' && expanded.has(this.rowId(item.row, item.rowIndex))) {
+        result.push({ kind: 'detail', row: item.row, rowIndex: item.rowIndex });
+      }
+    }
+    return result;
+  });
+
+  private buildBaseDisplayRows(): DisplayItem<TData>[] {
     const rows = this.sortedRows();
     const getChildren = this.getChildRows();
     if (getChildren) return this.buildTreeDisplayRows(rows, getChildren);
@@ -296,7 +323,7 @@ export class DataGrid<TData = unknown> implements OnInit {
     };
     buildLevel(rows, 0, '');
     return result;
-  });
+  }
 
   private buildTreeDisplayRows(
     rootRows: readonly TData[],
@@ -331,6 +358,20 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   protected toggleRowExpanded(row: TData, rowIndex: number): void {
     this.toggleGroup(String(this.rowId(row, rowIndex)));
+  }
+
+  protected isDetailExpanded(row: TData, rowIndex: number): boolean {
+    return this.expandedDetailRows().has(this.rowId(row, rowIndex));
+  }
+
+  protected toggleDetail(row: TData, rowIndex: number): void {
+    const id = this.rowId(row, rowIndex);
+    this.expandedDetailRows.update((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   /** `displayRows()`, paginated when `[pagination]` is enabled - used for the non-virtualized
@@ -660,9 +701,12 @@ export class DataGrid<TData = unknown> implements OnInit {
     });
   }
 
-  /** Stable `@for` track key for a display item - a group's own key, or the leaf row's identity. */
+  /** Stable `@for` track key for a display item - a group's own key, the leaf row's identity, or
+   * (for a detail panel) that same identity with a distinguishing prefix. */
   protected itemTrackKey(item: DisplayItem<TData>): string | number {
-    return item.kind === 'group' ? item.group.key : this.rowId(item.row, item.rowIndex);
+    if (item.kind === 'group') return item.group.key;
+    if (item.kind === 'detail') return `detail:${this.rowId(item.row, item.rowIndex)}`;
+    return this.rowId(item.row, item.rowIndex);
   }
 
   /** Formats an aggregate value for display; numbers are rounded to 2 decimal places (`avg`
