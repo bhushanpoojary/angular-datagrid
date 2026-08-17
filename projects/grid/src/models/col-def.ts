@@ -15,8 +15,9 @@ export interface ColDef<TData = unknown, TValue = unknown> {
   sortIndex?: number;
   /** Custom comparator; defaults to a numeric/date/locale-aware comparison of resolved values. */
   comparator?: (valueA: TValue, valueB: TValue, rowA: TData, rowB: TData) => number;
-  /** Enables a per-column filter row input. `true` behaves like `'text'` (case-insensitive substring). */
-  filter?: boolean | 'text' | 'number' | 'date';
+  /** Enables a per-column filter row input. `true` behaves like `'text'` (case-insensitive
+   * substring). `'set'` shows a checkbox facet panel of distinct values with counts instead. */
+  filter?: boolean | 'text' | 'number' | 'date' | 'set';
   /** Renders a selection checkbox in this column's cells, and a select-all checkbox in its header
    * when `rowSelection` is `'multiple'`. Typically set on the first column. */
   checkboxSelection?: boolean;

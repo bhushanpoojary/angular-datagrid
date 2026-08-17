@@ -263,6 +263,89 @@ describe('DataGrid', () => {
       setFilterInput('Name', 'zzz');
       expect((fixture.nativeElement as HTMLElement).textContent).toContain('No rows to display');
     });
+
+    it('quick filter with no field:value tokens behaves exactly as a plain substring match', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name' },
+        { field: 'score', headerName: 'Score' },
+      ]);
+      fixture.componentRef.setInput('quickFilterText', 'Alpha');
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['2']);
+    });
+
+    it('supports a field:value token scoped to one column, combined with free text', async () => {
+      await setInputs(threeRows, [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name' },
+        { field: 'score', headerName: 'Score' },
+      ]);
+      fixture.componentRef.setInput('quickFilterText', 'name:a');
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['1', '2', '3']); // Charlie/Alpha/Bravo all contain "a"
+
+      fixture.componentRef.setInput('quickFilterText', 'name:a score:9');
+      fixture.detectChanges();
+      expect(bodyText()).toEqual(['2']); // only Alpha has both "a" in name and "9" in score
+    });
+
+    describe('set filter (faceted search)', () => {
+      const teamRows: Row[] = [
+        { id: 1, name: 'Ada', score: 91, team: 'Blue' },
+        { id: 2, name: 'Grace', score: 88, team: 'Blue' },
+        { id: 3, name: 'Alan', score: 70, team: 'Red' },
+      ];
+      const setFilterDefs: ColDef<Row>[] = [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name' },
+        { field: 'team', headerName: 'Team', filter: 'set' },
+      ];
+
+      function openSetFilterPanel(): void {
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.gd-set-filter-toggle')!.click();
+        fixture.detectChanges();
+      }
+
+      function facetCheckbox(value: string): HTMLInputElement {
+        const options = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-set-filter-option'),
+        );
+        const option = options.find((el) => el.textContent?.includes(value));
+        if (!option) throw new Error(`facet option "${value}" not found`);
+        return option.querySelector('input')!;
+      }
+
+      it('lists distinct values with counts, all selected (unfiltered) by default', async () => {
+        await setInputs(teamRows, setFilterDefs);
+        openSetFilterPanel();
+        const labels = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.gd-set-filter-option'),
+        ).map((el) => el.textContent?.trim());
+        expect(labels).toEqual(['Blue (2)', 'Red (1)']);
+        expect(facetCheckbox('Blue').checked).toBe(true);
+        expect(facetCheckbox('Red').checked).toBe(true);
+      });
+
+      it('deselecting a facet value filters out matching rows', async () => {
+        await setInputs(teamRows, setFilterDefs);
+        openSetFilterPanel();
+        facetCheckbox('Red').click();
+        fixture.detectChanges();
+        expect(bodyText()).toEqual(['1', '2']); // Ada, Grace (Blue only)
+      });
+
+      it('re-selecting every value clears the filter entirely', async () => {
+        await setInputs(teamRows, setFilterDefs);
+        openSetFilterPanel();
+        facetCheckbox('Red').click();
+        fixture.detectChanges();
+        facetCheckbox('Red').click();
+        fixture.detectChanges();
+        expect(bodyText()).toEqual(['1', '2', '3']);
+        expect((fixture.nativeElement as HTMLElement).querySelector('.gd-set-filter-toggle--active')).toBeNull();
+      });
+    });
   });
 
   describe('pagination', () => {

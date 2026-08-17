@@ -61,7 +61,32 @@
     <div class="gd-row gd-row--filter" role="row" [style.min-width]="contentMinWidth()">
       @for (col of columns(); track col.key) {
         <div class="gd-cell gd-cell--filter" role="gridcell" [style]="col.style" [class.gd-cell--pinned]="col.pinned">
-          @if (col.def.filter) {
+          @if (col.def.filter === 'set') {
+            <div class="gd-set-filter">
+              <button
+                type="button"
+                class="gd-set-filter-toggle"
+                [class.gd-set-filter-toggle--active]="hasActiveSetFilter(col)"
+                (click)="toggleSetFilterPanel(col.key)"
+              >
+                Filter {{ hasActiveSetFilter(col) ? '●' : '▾' }}
+              </button>
+              @if (isSetFilterPanelOpen(col.key)) {
+                <div class="gd-set-filter-panel">
+                  @for (facet of facetsFor(col); track facet.value) {
+                    <label class="gd-set-filter-option">
+                      <input
+                        type="checkbox"
+                        [checked]="isFacetSelected(col, facet.value)"
+                        (change)="toggleFacetValue(col, facet.value)"
+                      />
+                      {{ facet.value }} ({{ facet.count }})
+                    </label>
+                  }
+                </div>
+              }
+            </div>
+          } @else if (col.def.filter) {
             <input
               type="text"
               class="gd-filter-input"

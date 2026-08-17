@@ -158,6 +158,10 @@ export class DataGrid<TData = unknown> implements OnInit {
 
   private readonly sortState = signal<SortEntry[]>([]);
   private readonly columnFilters = signal<Record<string, string>>({});
+  /** Selected values per `filter: 'set'` column key; no entry means "all values" (no restriction). */
+  private readonly setFilters = signal<Record<string, ReadonlySet<string>>>({});
+  /** Which column's set-filter facet panel is currently open, or `null` if none. */
+  private readonly openSetFilterKey = signal<string | null>(null);
   private readonly currentPage = signal(0);
   private readonly selection = signal<ReadonlyMap<string | number, TData>>(new Map());
   private readonly editingCell = signal<{ rowKey: string | number; colKey: string } | null>(null);
@@ -225,13 +229,23 @@ export class DataGrid<TData = unknown> implements OnInit {
   protected readonly filteredRows = computed<readonly TData[]>(() => {
     const cols = this.columns();
     const filters = this.columnFilters();
-    const quick = this.quickFilterText().trim().toLowerCase();
+    const setFilters = this.setFilters();
+    const { fieldTokens, remainingText } = parseSearchTokens(this.quickFilterText(), cols);
+    const quick = remainingText.trim().toLowerCase();
     const pin = this.isRowPinned();
     // Pinned rows are rendered in their own always-visible sections (see pinnedTopRows/
     // pinnedBottomRows) and never participate in the normal filter/sort/page/scroll pipeline.
     const candidateRows = pin ? this.rowData().filter((row) => !pin(row)) : this.rowData();
     const activeColumnFilters = cols.filter((col) => (filters[col.key] ?? '').trim().length > 0);
-    if (activeColumnFilters.length === 0 && !quick) return candidateRows;
+    const activeSetFilters = Object.entries(setFilters);
+    if (
+      activeColumnFilters.length === 0 &&
+      activeSetFilters.length === 0 &&
+      fieldTokens.length === 0 &&
+      !quick
+    ) {
+      return candidateRows;
+    }
 
     return candidateRows.filter((row) => {
       for (const col of activeColumnFilters) {
@@ -239,12 +253,67 @@ export class DataGrid<TData = unknown> implements OnInit {
         const type = col.def.filter === 'number' || col.def.filter === 'date' ? col.def.filter : 'text';
         if (!matchesColumnFilter(this.cellValue(row, col.def), filterText, type)) return false;
       }
+      for (const [colKey, selected] of activeSetFilters) {
+        const col = cols.find((c) => c.key === colKey);
+        if (col && !selected.has(this.cellDisplay(row, col.def))) return false;
+      }
+      for (const { col, value } of fieldTokens) {
+        if (!this.cellDisplay(row, col.def).toLowerCase().includes(value.toLowerCase())) return false;
+      }
       if (quick && !cols.some((col) => this.cellDisplay(row, col.def).toLowerCase().includes(quick))) {
         return false;
       }
       return true;
     });
   });
+
+  /** Distinct displayed values for a `filter: 'set'` column, with their count across ALL rows
+   * (not scoped to other active filters - a deliberate simplification over a fully "faceted"
+   * search where counts update live per other filters, to keep this feature reasonably scoped). */
+  protected facetsFor(col: ResolvedColumn<TData>): { value: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const row of this.rowData()) {
+      const display = this.cellDisplay(row, col.def);
+      counts.set(display, (counts.get(display) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => a.value.localeCompare(b.value));
+  }
+
+  protected hasActiveSetFilter(col: ResolvedColumn<TData>): boolean {
+    return !!this.setFilters()[col.key];
+  }
+
+  protected isFacetSelected(col: ResolvedColumn<TData>, value: string): boolean {
+    const selected = this.setFilters()[col.key];
+    return !selected || selected.has(value);
+  }
+
+  protected toggleFacetValue(col: ResolvedColumn<TData>, value: string): void {
+    this.setFilters.update((current) => {
+      const allValues = this.facetsFor(col).map((facet) => facet.value);
+      const existing = current[col.key] ?? new Set(allValues);
+      const next = new Set(existing);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+
+      const updated = { ...current };
+      // Selecting every value again is equivalent to "no filter" - drop the entry so
+      // hasActiveSetFilter()/the filter pipeline don't treat it as an active restriction.
+      if (next.size === allValues.length) delete updated[col.key];
+      else updated[col.key] = next;
+      return updated;
+    });
+  }
+
+  protected toggleSetFilterPanel(colKey: string): void {
+    this.openSetFilterKey.update((current) => (current === colKey ? null : colKey));
+  }
+
+  protected isSetFilterPanelOpen(colKey: string): boolean {
+    return this.openSetFilterKey() === colKey;
+  }
 
   protected readonly pinnedTopRows = computed<readonly TData[]>(() => {
     const pin = this.isRowPinned();
@@ -1082,6 +1151,33 @@ function defaultCompare(valueA: unknown, valueB: unknown): number {
 }
 
 const NUMBER_FILTER_PATTERN = /^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/;
+
+/** Splits `quickFilterText` into `field:value` tokens (matched against each column's `field`,
+ * case-insensitively) and the remaining free text, which is treated as a single substring exactly
+ * like the plain quick filter always has been - so text with no `field:value` tokens behaves
+ * identically to before this feature existed. */
+function parseSearchTokens<TData>(
+  text: string,
+  cols: readonly ResolvedColumn<TData>[],
+): { fieldTokens: { col: ResolvedColumn<TData>; value: string }[]; remainingText: string } {
+  const fieldTokens: { col: ResolvedColumn<TData>; value: string }[] = [];
+  const remainingParts: string[] = [];
+
+  for (const token of text.trim().split(/\s+/).filter(Boolean)) {
+    const colonIndex = token.indexOf(':');
+    if (colonIndex > 0) {
+      const key = token.slice(0, colonIndex).toLowerCase();
+      const value = token.slice(colonIndex + 1);
+      const col = cols.find((candidate) => (candidate.def.field ?? '').toLowerCase() === key);
+      if (col && value) {
+        fieldTokens.push({ col, value });
+        continue;
+      }
+    }
+    remainingParts.push(token);
+  }
+  return { fieldTokens, remainingText: remainingParts.join(' ') };
+}
 
 function matchesColumnFilter(value: unknown, filterText: string, type: 'text' | 'number' | 'date'): boolean {
   if (type === 'number') {

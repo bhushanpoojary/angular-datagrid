@@ -39,6 +39,52 @@
   font-family: inherit;
 }
 
+.gd-set-filter {
+  position: relative;
+}
+
+.gd-set-filter-toggle {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid var(--gd-border-color, #d0d0d0);
+  border-radius: 4px;
+  font-family: inherit;
+  background: var(--gd-background, #fff);
+  cursor: pointer;
+  text-align: left;
+}
+
+.gd-set-filter-toggle--active {
+  border-color: var(--gd-accent-color, #2563eb);
+  color: var(--gd-accent-color, #2563eb);
+}
+
+.gd-set-filter-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  background: var(--gd-background, #fff);
+  border: 1px solid var(--gd-border-color, #d0d0d0);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 6px 8px;
+  min-width: 160px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.gd-set-filter-option {
+  display: block;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
 /* --- Density presets: control cell padding via the same --gd-cell-padding-* vars the rest of
    the sheet already reads. 'normal' matches the hardcoded historical defaults, so it needs no
    override. --- */
