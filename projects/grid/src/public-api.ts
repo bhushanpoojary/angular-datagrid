@@ -4,5 +4,6 @@
 
 export * from './lib/data-grid';
 export * from './lib/pivot';
+export * from './lib/quick-chart';
 export * from './models/col-def';
 export * from './models/grid-events';
