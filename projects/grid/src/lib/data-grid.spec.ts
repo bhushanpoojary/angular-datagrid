@@ -987,6 +987,39 @@ describe('DataGrid', () => {
       expect(csvText.split('\r\n')[0]).toBe('ID,Name,Score');
       expect(csvText).toContain('Ada');
     });
+
+    it('getGridState() snapshots sort/filter/page state, and applyGridState() restores it', async () => {
+      fixture.componentRef.setInput('pagination', true);
+      fixture.componentRef.setInput('pageSize', 1);
+      const statefulDefs: ColDef<Row>[] = [
+        { field: 'id', headerName: 'ID' },
+        { field: 'name', headerName: 'Name', sortable: true },
+        { field: 'score', headerName: 'Score', filter: 'number' },
+      ];
+      await setInputs(rowData, statefulDefs);
+
+      headerFor('Name').click(); // sort by name asc
+      setFilterInput('Score', '>0');
+      const nextButton = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.gd-pager__buttons button'),
+      ).find((b) => b.textContent?.includes('Next'))!;
+      nextButton.click();
+      fixture.detectChanges();
+
+      const state = component.getGridState();
+      expect(state.sort).toEqual([{ key: 'name', direction: 'asc' }]);
+      expect(state.columnFilters).toEqual({ score: '>0' });
+      expect(state.page).toBe(1);
+
+      // Reset, then restore from the snapshot.
+      component.applyGridState({ sort: [], columnFilters: {}, page: 0 });
+      fixture.detectChanges();
+      expect(component.getGridState().sort).toEqual([]);
+
+      component.applyGridState(state);
+      fixture.detectChanges();
+      expect(component.getGridState()).toEqual(state);
+    });
   });
 
   describe('row grouping & aggregation', () => {

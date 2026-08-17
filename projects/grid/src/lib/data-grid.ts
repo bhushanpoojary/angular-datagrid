@@ -67,6 +67,16 @@ interface ContextMenuState {
   items: ContextMenuAction[];
 }
 
+/** A serializable snapshot of user-driven grid layout state, for persistence via `getGridState()`
+ * / `applyGridState()`. */
+export interface GridLayoutState {
+  columnWidths: Record<string, number>;
+  columnOrder: string[] | null;
+  sort: SortEntry[];
+  columnFilters: Record<string, string>;
+  page: number;
+}
+
 @Component({
   selector: 'gd-data-grid',
   imports: [NgClass, NgTemplateOutlet, ScrollingModule, AutoFocusDirective],
@@ -496,6 +506,28 @@ export class DataGrid<TData = unknown> implements OnInit {
   resetColumnState(): void {
     this.columnWidthOverrides.set({});
     this.columnOrder.set(null);
+  }
+
+  /** Snapshots the grid's user-driven layout state (column widths/order, sort, column filters,
+   * current page) for persistence - serialize the result yourself (e.g. `JSON.stringify` to
+   * `localStorage`); the grid stays storage-agnostic. */
+  getGridState(): GridLayoutState {
+    return {
+      columnWidths: this.columnWidthOverrides(),
+      columnOrder: this.columnOrder(),
+      sort: this.sortState(),
+      columnFilters: this.columnFilters(),
+      page: this.currentPage(),
+    };
+  }
+
+  /** Restores a snapshot from `getGridState()` (or a partial subset of it). */
+  applyGridState(state: Partial<GridLayoutState>): void {
+    if (state.columnWidths) this.columnWidthOverrides.set(state.columnWidths);
+    if (state.columnOrder !== undefined) this.columnOrder.set(state.columnOrder);
+    if (state.sort) this.sortState.set(state.sort);
+    if (state.columnFilters) this.columnFilters.set(state.columnFilters);
+    if (state.page !== undefined) this.currentPage.set(state.page);
   }
 
   /** Exports the currently filtered/sorted rows (all of them, ignoring pagination) as a CSV file
