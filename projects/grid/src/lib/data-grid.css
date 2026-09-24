@@ -2,8 +2,11 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  /* Single shared horizontal scrollbar for header + filter row + body - see contentMinWidth(). */
-  overflow-x: auto;
+  /* Root itself doesn't scroll horizontally; the body region owns the single visible horizontal
+     scrollbar and the fixed header/footer wrappers are kept in sync via onBodyScroll(). This lets
+     `position: sticky` pinned columns work in the virtualized body, whose CDK viewport is its own
+     scroll container (a sticky element only sticks relative to its nearest scroll ancestor). */
+  overflow: hidden;
   border: 1px solid var(--gd-border-color, #d0d0d0);
   font-family: var(--gd-font-family, sans-serif);
   font-size: var(--gd-font-size, 14px);
@@ -124,8 +127,22 @@
 
 .gd-viewport {
   width: 100%;
-  /* horizontal scroll is owned by .gd-root so header/filter/body move together */
-  overflow-x: hidden;
+  /* The virtualized body owns the visible horizontal scrollbar; sticky pinned columns stick
+     relative to this scroll container. The header/filter/pinned wrappers follow via onBodyScroll(). */
+  overflow-x: auto;
+}
+
+/* Fixed (non-vertically-scrolling) regions above/below the body. Each is its own horizontal scroll
+   container (so sticky pinned columns stick relative to it) but hides its scrollbar - onBodyScroll()
+   drives their scrollLeft to match the body. */
+.gd-topfixed,
+.gd-bottomfixed {
+  overflow: hidden;
+}
+
+/* Non-virtualized (paged/grouped/tree) body: owns the visible horizontal scrollbar like .gd-viewport. */
+.gd-bodyscroll {
+  overflow-x: auto;
 }
 
 .gd-viewport .gd-row {

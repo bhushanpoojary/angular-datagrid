@@ -12,6 +12,7 @@ import {
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { NgClass, NgTemplateOutlet } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
@@ -238,6 +239,27 @@ export class DataGrid<TData = unknown> implements OnInit {
     const total = this.columns().reduce((sum, col) => sum + col.width, 0);
     return `${total}px`;
   });
+
+  /** Fixed header/filter/pinned-top wrapper - horizontally synced to the scrolling body so its
+   * sticky pinned columns line up with the body's (see onBodyScroll). */
+  private readonly topFixed = viewChild<ElementRef<HTMLElement>>('topFixed');
+  /** Fixed pinned-bottom wrapper - horizontally synced to the scrolling body (see onBodyScroll). */
+  private readonly bottomFixed = viewChild<ElementRef<HTMLElement>>('bottomFixed');
+
+  /** Keeps the fixed header/footer wrappers horizontally aligned with the body, which owns the
+   * single visible horizontal scrollbar. Without this the header and body would drift apart, and
+   * pinned columns (which stick relative to each region's own scroll container) would misalign. */
+  protected onBodyScroll(event: Event): void {
+    const left = (event.target as HTMLElement).scrollLeft;
+    const top = this.topFixed()?.nativeElement;
+    if (top) {
+      top.scrollLeft = left;
+    }
+    const bottom = this.bottomFixed()?.nativeElement;
+    if (bottom) {
+      bottom.scrollLeft = left;
+    }
+  }
 
   protected readonly filteredRows = computed<readonly TData[]>(() => {
     const cols = this.columns();
